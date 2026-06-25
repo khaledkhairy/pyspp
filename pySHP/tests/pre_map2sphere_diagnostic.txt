@@ -1,0 +1,80 @@
+======================================================================
+PRE-MAP2SPHERE DIAGNOSTIC  |  2026-02-24 11:37:30
+======================================================================
+  Mesh: 502 vertices, 1000 faces
+
+--- 1. Topology ---
+  Edges: 1500
+  Euler char: 2  (expect 2 for genus-0)
+  Genus: 0
+  Boundary edges: 0
+  Non-manifold edges (>2 faces): 0
+  Expected faces for closed genus-0: 1000, actual: 1000
+
+--- 2. Face winding consistency (BFS propagation) ---
+  Face components: 1
+  Unvisited faces: 0
+  Inconsistent winding edges: 0
+  Signed volume: 0.793721 -> normals point outward
+
+--- 3. Degenerate faces ---
+  Zero-area faces (< 1e-15): 0
+  Tiny-area faces (< 1e-8):  0
+  Area range: [9.128734e-05, 1.166447e-01]
+  Area mean: 6.988370e-03, std: 1.226086e-02
+  No duplicate vertices
+
+--- 4. Neighbor list (L) ---
+  Valence range: [4, 8]
+  Valence mean: 5.98
+  Neighbor list is symmetric: OK
+
+  Valence histogram:
+    valence  4:    4  ####
+    valence  5:  111  ##################################################
+    valence  6:  286  ##################################################
+    valence  7:   95  ##################################################
+    valence  8:    6  ######
+
+--- 5. Pole selection (get_graph preview) ---
+  Weighted poles:   ixN=315, ixS=379
+    N position: [-0.5841 -0.04   -0.7612]
+    S position: [ 0.1656 -0.8672 -0.1407]
+    3D distance N-S: 1.2772
+    N valence: 6, S valence: 5
+  Unweighted poles: ixN2=73, ixS2=302
+    N2 position: [ 0.1206 -0.8517 -0.1971]
+    S2 position: [-5.286e-01  6.000e-04 -7.738e-01]
+    3D distance N2-S2: 1.2167
+
+--- 5b. Date-line feasibility check ---
+  Theta computed: range [0.000000, 3.141593]
+  Theta at N (ixN=315): 0.000000
+  Theta at S (ixS=379): 3.141593
+  Date-line path length: 23 vertices
+  Date-line reached south pole: OK
+  Date-line theta monotonically increasing: OK
+  Date-line vertices (first 20): [210, 239, 106, 439, 112, 141, 428, 66, 348, 369, 96, 330, 393, 84, 464, 87, 127, 142, 475, 269]
+  Date-line theta (first 20): ['0.3434', '0.4796', '0.5527', '0.6258', '0.6774', '0.7224', '0.7764', '0.8444', '0.9761', '1.1086', '1.2282', '1.3837', '1.5416', '1.6761', '1.8104', '1.9772', '2.0898', '2.1742', '2.2466', '2.3343']
+
+--- 6. Per-patch analysis ---
+  Patches: 15, face_labels unique: 15
+  Patch 0: 155 faces, winding MIXED (29/155 inward)
+  Patch 1: 44 faces, winding MIXED (3/44 inward)
+  Patch 2: 50 faces, winding MIXED (3/50 inward)
+  Patch 3: 88 faces, winding MIXED (6/88 inward)
+  Patch 4: 71 faces, winding MIXED (3/71 inward)
+  Patch 5: 56 faces, winding MIXED (4/56 inward)
+  Patch 6: 66 faces, winding MIXED (3/66 inward)
+  Patch 7: 69 faces, winding MIXED (9/69 inward)
+  Patch 8: 163 faces, winding MIXED (63/163 inward)
+  Patch 9: 34 faces, winding MIXED (1/34 inward)
+  Patch 10: 64 faces, winding MIXED (6/64 inward)
+  Patch 11: 20 faces, winding MIXED (2/20 inward)
+  Patch 12: 48 faces, winding MIXED (3/48 inward)
+  Patch 13: 48 faces, winding MIXED (4/48 inward)
+  Patch 14: 24 faces, winding MIXED (3/24 inward)
+
+======================================================================
+RESULT: READY -- mesh appears suitable for bijective mapping
+======================================================================

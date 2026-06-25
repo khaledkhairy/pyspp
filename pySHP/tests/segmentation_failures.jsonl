@@ -1,0 +1,237 @@
+{"nseeds": 8, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 9, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 10, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 11, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 12, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 13, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 14, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 15, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 16, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 17, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 18, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 19, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 20, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 21, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 22, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 23, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 24, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 25, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 3, "stage": "neighbor_check", "invalid_patches": [2]}
+{"nseeds": 4, "stage": "neighbor_check", "invalid_patches": [0, 1]}
+{"nseeds": 5, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 6, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 7, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 8, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 9, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 10, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 11, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 12, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 13, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 14, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 15, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 16, "stage": "topological_annuli", "annular_patches": [8]}
+{"nseeds": 17, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 18, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 19, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 20, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 21, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 22, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 23, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 24, "stage": "neighbor_check", "invalid_patches": [0, 16]}
+{"nseeds": 3, "stage": "neighbor_check", "invalid_patches": [2]}
+{"nseeds": 4, "stage": "neighbor_check", "invalid_patches": [0, 1]}
+{"nseeds": 5, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 6, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 7, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 8, "stage": "neighbor_check", "invalid_patches": [0]}
+{"nseeds": 9, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 10, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 11, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 12, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 13, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 14, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 15, "stage": "zero_key_patches", "zero_key_patches": [0]}
+{"nseeds": 3, "stage": "patch_info_gen", "error": "all the input array dimensions except for the concatenation axis must match exactly, but along dimension 1, the array at index 0 has size 0 and the array at index 1 has size 3"}
+{"nseeds": 4, "stage": "face_quality", "n_bad_faces": 2, "sample": [[6, "min_angle=1.43deg"], [7, "min_angle=1.43deg"]]}
+{"nseeds": 5, "stage": "simplified_mesh_validation", "non_manifold_edges": {"edges": [["1", "6"], ["3", "6"], ["1", "3"]], "count": 3}, "has_boundary": {"boundary_edges": 3, "message": "Mesh has 3 boundary edges (should be closed)"}}
+{"nseeds": 6, "stage": "simplified_mesh_validation", "non_manifold_edges": {"edges": [["1", "7"], ["4", "7"], ["1", "4"]], "count": 3}, "has_boundary": {"boundary_edges": 3, "message": "Mesh has 3 boundary edges (should be closed)"}}
+{"nseeds": 7, "stage": "simplified_mesh_validation", "non_manifold_edges": {"edges": [["2", "9"], ["5", "9"], ["2", "5"]], "count": 3}, "has_boundary": {"boundary_edges": 3, "message": "Mesh has 3 boundary edges (should be closed)"}}
+{"nseeds": 8, "stage": "simplified_mesh_validation", "non_manifold_edges": {"edges": [["1", "11"], ["9", "12"], ["1", "10"], ["5", "11"], ["1", "5"], ["1", "12"], ["3", "10"], ["3", "9"]], "count": 8}, "has_boundary": {"boundary_edges": 8, "message": "Mesh has 8 boundary edges (should be closed)"}, "genus": {"genus": 1, "euler_characteristic": 0, "message": "Mesh has genus 1 (not a sphere, need genus 0)"}}
+{"nseeds": 20, "stage": "face_quality", "n_bad_faces": 1, "sample": [[100, "min_angle=4.83deg"]]}
+{"nseeds": 21, "stage": "face_quality", "n_bad_faces": 1, "sample": [[110, "min_angle=2.93deg"]]}
+{"nseeds": 22, "stage": "simplified_mesh_validation", "floating_vertices": {"indices": [62, 63, 64, 65, 66, 67], "count": 6}, "non_manifold_edges": {"edges": [["1", "38"], ["1", "59"], ["59", "60"], ["60", "61"], ["37", "61"], ["37", "38"], ["37", "53"], ["1", "53"]], "count": 8}, "has_boundary": {"boundary_edges": 4, "message": "Mesh has 4 boundary edges (should be closed)"}, "disconnected": {"n_components": 7, "component_sizes": ["62", "1", "1", "1", "1", "1", "1"], "message": "Mesh has 7 disconnected components"}}
+{"nseeds": 23, "stage": "simplified_mesh_validation", "floating_vertices": {"indices": [65, 66, 67, 68, 69, 70], "count": 6}, "non_manifold_edges": {"edges": [["2", "40"], ["2", "62"], ["62", "63"], ["63", "64"], ["39", "64"], ["39", "40"], ["39", "55"], ["2", "55"]], "count": 8}, "has_boundary": {"boundary_edges": 4, "message": "Mesh has 4 boundary edges (should be closed)"}, "disconnected": {"n_components": 7, "component_sizes": ["65", "1", "1", "1", "1", "1", "1"], "message": "Mesh has 7 disconnected components"}}
+{"nseeds": 24, "stage": "simplified_mesh_validation", "floating_vertices": {"indices": [68, 69, 70, 71, 72, 73], "count": 6}, "non_manifold_edges": {"edges": [["4", "42"], ["4", "65"], ["65", "66"], ["66", "67"], ["40", "67"], ["40", "42"], ["40", "57"], ["4", "57"]], "count": 8}, "has_boundary": {"boundary_edges": 4, "message": "Mesh has 4 boundary edges (should be closed)"}, "disconnected": {"n_components": 7, "component_sizes": ["68", "1", "1", "1", "1", "1", "1"], "message": "Mesh has 7 disconnected components"}}
+{"nseeds": 20, "stage": "face_quality", "n_bad_faces": 1, "sample": [[100, "min_angle=4.83deg"]]}
+{"nseeds": 21, "stage": "face_quality", "n_bad_faces": 1, "sample": [[110, "min_angle=2.93deg"]]}
+{"nseeds": 22, "stage": "simplified_mesh_validation", "floating_vertices": {"indices": [62, 63, 64, 65, 66, 67], "count": 6}, "non_manifold_edges": {"edges": [["1", "38"], ["1", "59"], ["59", "60"], ["60", "61"], ["37", "61"], ["37", "38"], ["37", "53"], ["1", "53"]], "count": 8}, "has_boundary": {"boundary_edges": 4, "message": "Mesh has 4 boundary edges (should be closed)"}, "disconnected": {"n_components": 7, "component_sizes": ["62", "1", "1", "1", "1", "1", "1"], "message": "Mesh has 7 disconnected components"}}
+{"nseeds": 23, "stage": "simplified_mesh_validation", "floating_vertices": {"indices": [65, 66, 67, 68, 69, 70], "count": 6}, "non_manifold_edges": {"edges": [["2", "40"], ["2", "62"], ["62", "63"], ["63", "64"], ["39", "64"], ["39", "40"], ["39", "55"], ["2", "55"]], "count": 8}, "has_boundary": {"boundary_edges": 4, "message": "Mesh has 4 boundary edges (should be closed)"}, "disconnected": {"n_components": 7, "component_sizes": ["65", "1", "1", "1", "1", "1", "1"], "message": "Mesh has 7 disconnected components"}}
+{"nseeds": 24, "stage": "simplified_mesh_validation", "floating_vertices": {"indices": [68, 69, 70, 71, 72, 73], "count": 6}, "non_manifold_edges": {"edges": [["4", "42"], ["4", "65"], ["65", "66"], ["66", "67"], ["40", "67"], ["40", "42"], ["40", "57"], ["4", "57"]], "count": 8}, "has_boundary": {"boundary_edges": 4, "message": "Mesh has 4 boundary edges (should be closed)"}, "disconnected": {"n_components": 7, "component_sizes": ["68", "1", "1", "1", "1", "1", "1"], "message": "Mesh has 7 disconnected components"}}
+{"nseeds": 25, "stage": "topological_annuli", "annular_patches": [2, 21, 23]}
+{"nseeds": 26, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23]}
+{"nseeds": 27, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23]}
+{"nseeds": 28, "stage": "topological_annuli", "annular_patches": [2, 21, 22, 23, 27]}
+{"nseeds": 29, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 30, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 31, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 32, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 14, 19, 22, 23, 27]}
+{"nseeds": 33, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 23, 27]}
+{"nseeds": 34, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 23, 27]}
+{"nseeds": 35, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 22, 23, 27, 30]}
+{"nseeds": 36, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 22, 23, 27, 30]}
+{"nseeds": 37, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 27, 30, 36]}
+{"nseeds": 38, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 27, 30, 36, 37]}
+{"nseeds": 39, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 19, 27, 30, 36, 37, 38]}
+{"nseeds": 40, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 18, 19, 27, 30, 36, 37, 38]}
+{"nseeds": 41, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 18, 19, 27, 36, 37, 38, 40]}
+{"nseeds": 42, "stage": "topological_annuli", "annular_patches": [2, 7, 8, 11, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 43, "stage": "topological_annuli", "annular_patches": [2, 7, 8, 11, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 44, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 45, "stage": "topological_annuli", "annular_patches": [2, 6, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 46, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41, 45]}
+{"nseeds": 47, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 19, 24, 27, 36, 37, 38, 40, 41, 42, 45, 46]}
+{"nseeds": 48, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 24, 27, 36, 37, 38, 40, 41, 42, 45, 46]}
+{"nseeds": 49, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 27, 36, 37, 38, 41, 45, 46, 48]}
+{"nseeds": 50, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 37, 41, 45, 46, 47, 48]}
+{"nseeds": 51, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 28, 37, 45, 47, 48, 50]}
+{"nseeds": 52, "stage": "topological_annuli", "annular_patches": [8, 11, 14, 18, 28, 37, 43, 45, 47, 48, 50]}
+{"nseeds": 53, "stage": "topological_annuli", "annular_patches": [8, 11, 14, 18, 23, 26, 28, 37, 39, 43, 45, 47, 48, 50]}
+{"nseeds": 54, "stage": "neighbor_check", "invalid_patches": [14]}
+{"nseeds": 55, "stage": "neighbor_check", "invalid_patches": [14]}
+{"nseeds": 56, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 57, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 48, 53]}
+{"nseeds": 58, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 59, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 60, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 61, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 62, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 63, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 64, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 65, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57, 58]}
+{"nseeds": 66, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57, 58]}
+{"nseeds": 67, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57]}
+{"nseeds": 68, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 19, 21, 26, 28, 34, 38, 39, 43, 44, 45, 51, 54, 57]}
+{"nseeds": 69, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 70, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 71, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 72, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 73, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 74, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 75, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 76, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 77, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 78, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 79, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 80, "stage": "neighbor_check", "invalid_patches": [19]}
+{"nseeds": 25, "stage": "topological_annuli", "annular_patches": [2, 21, 23]}
+{"nseeds": 26, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23]}
+{"nseeds": 27, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23]}
+{"nseeds": 28, "stage": "topological_annuli", "annular_patches": [2, 21, 22, 23, 27]}
+{"nseeds": 29, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 30, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 31, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 32, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 14, 19, 22, 23, 27]}
+{"nseeds": 33, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 23, 27]}
+{"nseeds": 34, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 23, 27]}
+{"nseeds": 35, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 22, 23, 27, 30]}
+{"nseeds": 36, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 22, 23, 27, 30]}
+{"nseeds": 37, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 27, 30, 36]}
+{"nseeds": 38, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 27, 30, 36, 37]}
+{"nseeds": 39, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 19, 27, 30, 36, 37, 38]}
+{"nseeds": 40, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 18, 19, 27, 30, 36, 37, 38]}
+{"nseeds": 41, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 18, 19, 27, 36, 37, 38, 40]}
+{"nseeds": 42, "stage": "topological_annuli", "annular_patches": [2, 7, 8, 11, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 43, "stage": "topological_annuli", "annular_patches": [2, 7, 8, 11, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 44, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 45, "stage": "topological_annuli", "annular_patches": [2, 6, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 46, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41, 45]}
+{"nseeds": 47, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 19, 24, 27, 36, 37, 38, 40, 41, 42, 45, 46]}
+{"nseeds": 48, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 24, 27, 36, 37, 38, 40, 41, 42, 45, 46]}
+{"nseeds": 49, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 27, 36, 37, 38, 41, 45, 46, 48]}
+{"nseeds": 50, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 37, 41, 45, 46, 47, 48]}
+{"nseeds": 51, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 28, 37, 45, 47, 48, 50]}
+{"nseeds": 52, "stage": "topological_annuli", "annular_patches": [8, 11, 14, 18, 28, 37, 43, 45, 47, 48, 50]}
+{"nseeds": 53, "stage": "topological_annuli", "annular_patches": [8, 11, 14, 18, 23, 26, 28, 37, 39, 43, 45, 47, 48, 50]}
+{"nseeds": 54, "stage": "topological_annuli", "annular_patches": [8, 11, 26, 28, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 55, "stage": "topological_annuli", "annular_patches": [8, 11, 26, 28, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 56, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 57, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 48, 53]}
+{"nseeds": 58, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57]}
+{"nseeds": 59, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 60, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 61, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 62, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 63, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 64, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 65, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57, 58]}
+{"nseeds": 66, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57, 58]}
+{"nseeds": 67, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57]}
+{"nseeds": 68, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 19, 21, 26, 28, 34, 38, 39, 43, 44, 45, 51, 54, 57]}
+{"nseeds": 69, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 38, 39, 43, 44, 45, 51, 54, 57, 63]}
+{"nseeds": 70, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 71, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 72, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 73, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 74, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 75, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 38, 39, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 76, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 38, 39, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 77, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 34, 35, 38, 39, 41, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 78, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 35, 38, 39, 41, 42, 43, 44, 51, 54, 64]}
+{"nseeds": 79, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 35, 38, 39, 41, 42, 43, 51, 54, 64]}
+{"nseeds": 80, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 35, 38, 39, 41, 42, 43, 51, 54, 64]}
+{"nseeds": 25, "stage": "topological_annuli", "annular_patches": [2, 21, 23]}
+{"nseeds": 26, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23]}
+{"nseeds": 27, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23]}
+{"nseeds": 28, "stage": "topological_annuli", "annular_patches": [2, 21, 22, 23, 27]}
+{"nseeds": 29, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 30, "stage": "topological_annuli", "annular_patches": [2, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 31, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 21, 23, 24, 25, 27]}
+{"nseeds": 32, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 14, 19, 22, 23, 27]}
+{"nseeds": 33, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 23, 27]}
+{"nseeds": 34, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 23, 27]}
+{"nseeds": 35, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 22, 23, 27, 30]}
+{"nseeds": 36, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 22, 23, 27, 30]}
+{"nseeds": 37, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 27, 30, 36]}
+{"nseeds": 38, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 19, 22, 27, 30, 36, 37]}
+{"nseeds": 39, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 19, 27, 30, 36, 37, 38]}
+{"nseeds": 40, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 18, 19, 27, 30, 36, 37, 38]}
+{"nseeds": 41, "stage": "topological_annuli", "annular_patches": [2, 3, 7, 8, 11, 18, 19, 27, 36, 37, 38, 40]}
+{"nseeds": 42, "stage": "topological_annuli", "annular_patches": [2, 7, 8, 11, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 43, "stage": "topological_annuli", "annular_patches": [2, 7, 8, 11, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 44, "stage": "topological_annuli", "annular_patches": [2, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 45, "stage": "topological_annuli", "annular_patches": [2, 6, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41]}
+{"nseeds": 46, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 19, 27, 36, 37, 38, 40, 41, 45]}
+{"nseeds": 47, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 19, 24, 27, 36, 37, 38, 40, 41, 42, 45, 46]}
+{"nseeds": 48, "stage": "topological_annuli", "annular_patches": [6, 8, 11, 13, 14, 18, 24, 27, 36, 37, 38, 40, 41, 42, 45, 46]}
+{"nseeds": 49, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 27, 36, 37, 38, 41, 45, 46, 48]}
+{"nseeds": 50, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 37, 41, 45, 46, 47, 48]}
+{"nseeds": 51, "stage": "topological_annuli", "annular_patches": [8, 11, 13, 14, 18, 28, 37, 45, 47, 48, 50]}
+{"nseeds": 52, "stage": "topological_annuli", "annular_patches": [8, 11, 14, 18, 28, 37, 43, 45, 47, 48, 50]}
+{"nseeds": 53, "stage": "topological_annuli", "annular_patches": [8, 11, 14, 18, 23, 26, 28, 37, 39, 43, 45, 47, 48, 50]}
+{"nseeds": 54, "stage": "topological_annuli", "annular_patches": [8, 11, 26, 28, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 55, "stage": "topological_annuli", "annular_patches": [8, 11, 26, 28, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 56, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 47, 48, 50, 53]}
+{"nseeds": 57, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 48, 53]}
+{"nseeds": 58, "stage": "topological_annuli", "annular_patches": [8, 10, 11, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57]}
+{"nseeds": 59, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 60, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 61, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 37, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 62, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 63, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 64, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 39, 43, 44, 45, 48, 51, 53, 54, 57, 58]}
+{"nseeds": 65, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57, 58]}
+{"nseeds": 66, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57, 58]}
+{"nseeds": 67, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 19, 21, 26, 28, 32, 34, 39, 43, 44, 45, 51, 53, 54, 57]}
+{"nseeds": 68, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 19, 21, 26, 28, 34, 38, 39, 43, 44, 45, 51, 54, 57]}
+{"nseeds": 69, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 38, 39, 43, 44, 45, 51, 54, 57, 63]}
+{"nseeds": 70, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 71, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 72, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 73, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 45, 51, 54, 57, 63, 64]}
+{"nseeds": 74, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 37, 38, 39, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 75, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 38, 39, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 76, "stage": "topological_annuli", "annular_patches": [8, 9, 10, 17, 21, 22, 26, 28, 34, 38, 39, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 77, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 34, 35, 38, 39, 41, 42, 43, 44, 51, 54, 57, 64]}
+{"nseeds": 78, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 35, 38, 39, 41, 42, 43, 44, 51, 54, 64]}
+{"nseeds": 79, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 35, 38, 39, 41, 42, 43, 51, 54, 64]}
+{"nseeds": 80, "stage": "topological_annuli", "annular_patches": [8, 9, 17, 21, 25, 26, 35, 38, 39, 41, 42, 43, 51, 54, 64]}

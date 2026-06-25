@@ -1,0 +1,60 @@
+Run ID: 71507a2f  |  Timestamp: 2026-02-24 11:37:23
+======================================================================
+SIMPLIFIED MESH FULL DIAGNOSTIC
+======================================================================
+  Vertices: 502
+  Faces: 1000
+  Patches: 15
+  Face labels range: 0 to 14
+
+--- Patch face counts ---
+  Patch 0: 155 faces
+  Patch 1: 44 faces
+  Patch 2: 50 faces
+  Patch 3: 88 faces
+  Patch 4: 71 faces
+  Patch 5: 56 faces
+  Patch 6: 66 faces
+  Patch 7: 69 faces
+  Patch 8: 163 faces
+  Patch 9: 34 faces
+  Patch 10: 64 faces
+  Patch 11: 20 faces
+  Patch 12: 48 faces
+  Patch 13: 48 faces
+  Patch 14: 24 faces
+
+  OK: No floating vertices
+
+--- Edge analysis ---
+  Total edges: 1500
+  Boundary edges (1 face): 0
+  Non-manifold edges (!=2 faces): 0
+
+--- Topology ---
+  Euler characteristic: 2 (should be 2 for genus-0)
+  Genus: 0
+
+--- Connectivity ---
+  Connected components: 1
+
+--- Per-patch face winding check ---
+  Patch 0: 155 faces, 62 normals inconsistent with face 0
+  Patch 1: 44 faces, 41 normals inconsistent with face 0
+  Patch 2: 50 faces, 12 normals inconsistent with face 0
+  Patch 3: 88 faces, 28 normals inconsistent with face 0
+  Patch 4: 71 faces, 14 normals inconsistent with face 0
+  Patch 5: 56 faces, 35 normals inconsistent with face 0
+  Patch 6: 66 faces, 18 normals inconsistent with face 0
+  Patch 7: 69 faces, 11 normals inconsistent with face 0
+  Patch 8: 163 faces, 75 normals inconsistent with face 0
+  Patch 9: 34 faces, 1 normals inconsistent with face 0
+  Patch 10: 64 faces, 14 normals inconsistent with face 0
+  Patch 11: 20 faces, 2 normals inconsistent with face 0
+  Patch 12: 48 faces, 6 normals inconsistent with face 0
+  Patch 13: 48 faces, 4 normals inconsistent with face 0
+  Patch 14: 24 faces, 3 normals inconsistent with face 0
+
+======================================================================
+RESULT: VALID — manifold, closed, genus-0, ready for bijective mapping
+======================================================================

@@ -1,0 +1,25 @@
+# --- Large local artifacts (not source) ---
+backup/
+Matlab/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+.venv/
+venv/
+
+# --- Runtime caches / generated outputs ---
+# Newton Jacobian sparsity caches (regenerated automatically)
+data_temp_*.npz
+# Per-run diagnostics and exported shapes
+**/simplified_mesh_diagnostic.txt
+*.shp3
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp

@@ -1,0 +1,123 @@
+======================================================================
+SPHERICAL PARAMETERIZATION DIAGNOSTIC  |  2026-02-24 11:43:27
+======================================================================
+  Mesh: 502 vertices, 1000 faces
+
+--- Poles ---
+  North pole (ixN=315): X=[-0.5841 -0.04   -0.7612], theta=0.000000, phi=0.000000
+  South pole (ixS=379): X=[ 0.1656 -0.8672 -0.1407], theta=3.141593, phi=0.000000
+
+--- Theta (latitude) statistics ---
+  Range: [0.000000, 3.141593]  (expect [0, pi])
+  Mean: 1.294082,  Std: 0.617747
+  Vertices at theta~0 (north): 1
+  Vertices at theta~pi (south): 1
+
+--- Phi (longitude) statistics ---
+  Range: [0.000000, 6.280996]  (expect [0, 2*pi])
+  Mean: 2.959294,  Std: 2.180223
+  Vertices at phi~0: 2
+
+--- Theta histogram (10 equal bins over [0, pi]) ---
+  [0.000, 0.314):    8  ########
+  [0.314, 0.628):   34  ##################################
+  [0.628, 0.942):   90  ############################################################
+  [0.942, 1.257):  188  ############################################################
+  [1.257, 1.571):   44  ############################################
+  [1.571, 1.885):   38  ######################################
+  [1.885, 2.199):   37  #####################################
+  [2.199, 2.513):   36  ####################################
+  [2.513, 2.827):   19  ###################
+  [2.827, 3.142):    8  ########
+
+--- Unit-sphere Cartesian positions ---
+  Radius range: [1.00000000, 1.00000000] (expect ~1)
+
+--- Spherical triangle orientation (per face) ---
+  Positive orientation (CCW from outside): 1000
+  Negative orientation (CW  from outside): 0
+  Degenerate (|orient| < 1e-15):           0
+  All faces consistently oriented (CCW) -- GOOD
+
+--- Spherical triangle area statistics ---
+  Total |area|: 23.881464  (expect ~4*pi = 12.566371)
+  Min |area|: 8.629915e-05
+  Max |area|: 6.125293e-02
+  Mean |area|: 2.388146e-02
+  Std  |area|: 1.857392e-02
+  Max/Min ratio: 709.77
+  >>> Total area exceeds 4*pi by 11.3151 (90.0%) -- indicates overlap
+
+--- Spherical edge lengths ---
+  Number of edges: 1500
+  Min: 6.951193e-03
+  Max: 1.115709e+00
+  Mean: 2.058637e-01
+  Max/Min ratio: 160.51
+
+--- Vertex spread on sphere ---
+  Centroid of sphere points: [0.2812, 0.0388, 0.2549]
+  Centroid distance from origin: 0.381516 (expect ~0 for good spread)
+  >>> Vertices clustered in one hemisphere (centroid bias 0.3815)
+
+--- Per-vertex theta/phi (first 30 and poles) ---
+  v0: theta=0.861481, phi=1.396916, X_orig=[ 0.1407 -0.0771 -0.8431], X_sph=[0.1313 0.7474 0.6513]
+  v1: theta=0.790674, phi=0.932961, X_orig=[ 0.0948  0.0154 -0.8505], X_sph=[0.4233 0.5711 0.7034]
+  v2: theta=0.985933, phi=4.980612, X_orig=[-0.7253 -0.1288  0.165 ], X_sph=[ 0.221  -0.804   0.5521]
+  v3: theta=2.767331, phi=0.244700, X_orig=[ 0.2254 -0.8542 -0.0519], X_sph=[ 0.3547  0.0886 -0.9308]
+  v4: theta=2.842033, phi=1.476712, X_orig=[ 0.2151 -0.8558 -0.1164], X_sph=[ 0.0277  0.2938 -0.9555]
+  v5: theta=1.343188, phi=6.020850, X_orig=[-0.0356 -0.1544  0.8534], X_sph=[ 0.9409 -0.2526  0.2256]
+  v6: theta=0.355867, phi=5.776986, X_orig=[-0.5786  0.021  -0.7374], X_sph=[ 0.3047 -0.1689  0.9373]
+  v7: theta=0.197809, phi=5.473642, X_orig=[-0.6277 -0.0016 -0.7193], X_sph=[ 0.1356 -0.1423  0.9805]
+  v8: theta=1.007410, phi=0.018008, X_orig=[0.2949 0.0166 0.7371], X_sph=[0.8453 0.0152 0.5341]
+  v9: theta=2.391958, phi=4.030784, X_orig=[-0.1211 -0.8359 -0.2243], X_sph=[-0.4293 -0.5291 -0.7319]
+  v10: theta=2.321848, phi=4.261696, X_orig=[-0.1539 -0.7913 -0.2261], X_sph=[-0.3184 -0.658  -0.6824]
+  v11: theta=0.689717, phi=4.191198, X_orig=[-0.7105 -0.1127 -0.4285], X_sph=[-0.3168 -0.5518  0.7714]
+  v12: theta=0.914445, phi=4.580209, X_orig=[-0.7602 -0.0621 -0.2965], X_sph=[-0.1044 -0.7853  0.6102]
+  v13: theta=0.832499, phi=4.475432, X_orig=[-0.7469 -0.0652 -0.3938], X_sph=[-0.1736 -0.7189  0.673 ]
+  v14: theta=0.960007, phi=0.921699, X_orig=[ 0.6861  0.0082 -0.5855], X_sph=[0.4952 0.6526 0.5735]
+  v15: theta=1.671444, phi=0.770119, X_orig=[ 0.121  -0.1368  0.0571], X_sph=[ 0.7142  0.6927 -0.1005]
+  v16: theta=1.606492, phi=1.214826, X_orig=[ 0.226  -0.1102 -0.0106], X_sph=[ 0.3483  0.9367 -0.0357]
+  v17: theta=1.004814, phi=0.807860, X_orig=[ 0.8989 -0.086  -0.2811], X_sph=[0.5833 0.6101 0.5362]
+  v18: theta=1.671747, phi=4.059149, X_orig=[-0.0242 -0.2511 -0.0716], X_sph=[-0.6047 -0.7901 -0.1008]
+  v19: theta=2.510840, phi=5.883782, X_orig=[ 0.0161 -0.8631  0.1747], X_sph=[ 0.5433 -0.2293 -0.8076]
+  v20: theta=2.433100, phi=0.169941, X_orig=[ 0.125  -0.7751  0.1779], X_sph=[ 0.6413  0.11   -0.7593]
+  v21: theta=1.326718, phi=0.471171, X_orig=[ 0.6325 -0.1515  0.3314], X_sph=[0.8646 0.4405 0.2417]
+  v22: theta=1.069180, phi=5.794385, X_orig=[-0.3603 -0.0131  0.867 ], X_sph=[ 0.7741 -0.4117  0.4808]
+  v23: theta=1.013283, phi=0.646648, X_orig=[ 0.8754 -0.0103  0.0919], X_sph=[0.6773 0.5113 0.5291]
+  v24: theta=1.026645, phi=0.838205, X_orig=[ 0.811  -0.1399 -0.3912], X_sph=[0.5722 0.6361 0.5177]
+  v25: theta=2.472944, phi=5.540728, X_orig=[-0.1133 -0.8595  0.1374], X_sph=[ 0.4568 -0.4191 -0.7847]
+  v26: theta=2.273941, phi=5.494429, X_orig=[-0.1573 -0.8225  0.1282], X_sph=[ 0.5376 -0.5412 -0.6466]
+  v27: theta=2.304478, phi=5.250213, X_orig=[-0.1643 -0.8452  0.0687], X_sph=[ 0.3805 -0.6379 -0.6696]
+  v28: theta=0.968610, phi=5.387848, X_orig=[-0.6385 -0.0412  0.5226], X_sph=[ 0.5153 -0.6431  0.5664]
+  v29: theta=0.994256, phi=0.839140, X_orig=[ 0.8207  0.0184 -0.4489], X_sph=[0.5601 0.6238 0.5451]
+  v315: theta=0.000000, phi=0.000000, X_orig=[-0.5841 -0.04   -0.7612], X_sph=[0. 0. 1.] [NORTH POLE]
+  v379: theta=3.141593, phi=0.000000, X_orig=[ 0.1656 -0.8672 -0.1407], X_sph=[ 0.  0. -1.] [SOUTH POLE]
+
+--- Per-patch spherical parameterization ---
+  Patch 0: 155 faces, orient OK, area_sum=6.11335, theta=[1.8538,3.1416], phi=[0.0000,6.2397]
+  Patch 1: 44 faces, orient OK, area_sum=0.35415, theta=[0.5956,0.9741], phi=[0.0199,6.2392]
+  Patch 2: 50 faces, orient OK, area_sum=0.73256, theta=[0.9939,1.5644], phi=[0.0490,6.2615]
+  Patch 3: 88 faces, orient OK, area_sum=3.10344, theta=[0.0000,1.2645], phi=[0.0000,5.7770]
+  Patch 4: 71 faces, orient OK, area_sum=0.37447, theta=[0.8912,1.3007], phi=[0.6272,2.1259]
+  Patch 5: 56 faces, orient OK, area_sum=0.90431, theta=[0.7088,1.3275], phi=[3.8857,5.9542]
+  Patch 6: 66 faces, orient OK, area_sum=0.30971, theta=[0.9428,1.4846], phi=[0.1310,0.7890]
+  Patch 7: 69 faces, orient OK, area_sum=0.90844, theta=[0.5010,1.2867], phi=[0.1762,2.2771]
+  Patch 8: 163 faces, orient OK, area_sum=7.75676, theta=[1.1616,2.3097], phi=[0.1472,6.1736]
+  Patch 9: 34 faces, orient OK, area_sum=0.12160, theta=[0.9130,1.2981], phi=[0.0199,6.2449]
+  Patch 10: 64 faces, orient OK, area_sum=1.49833, theta=[0.1978,1.0482], phi=[0.0859,6.1671]
+  Patch 11: 20 faces, orient OK, area_sum=0.07564, theta=[0.8343,0.9912], phi=[0.2293,0.7183]
+  Patch 12: 48 faces, orient OK, area_sum=0.86790, theta=[0.8822,1.5422], phi=[3.9914,5.9542]
+  Patch 13: 48 faces, orient OK, area_sum=0.08841, theta=[0.9525,1.3273], phi=[0.0180,6.2810]
+  Patch 14: 24 faces, orient OK, area_sum=0.67241, theta=[1.0220,1.6088], phi=[0.1059,6.1736]
+
+--- 3D mesh face winding vs sphere winding ---
+  3D mesh: 858 outward, 142 inward
+  Winding mismatches (3D vs sphere): 142/1000
+  First mismatched faces: [4, 9, 10, 26, 47, 76, 152, 155, 163, 167, 178, 179, 180, 186, 189, 190, 191, 192, 195, 201]
+
+======================================================================
+RESULT: ISSUES FOUND -- 2 problem(s):
+  - total spherical area exceeds 4*pi by 11.3151
+  - vertex centroid far from origin (0.3815)
+======================================================================

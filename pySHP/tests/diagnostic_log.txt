@@ -1,0 +1,232 @@
+Loaded mesh: 1002 vertices, 2000 faces
+Segmentation done: 15 patches
+
+============================================================
+KEY VERTEX DETECTION DEBUG:
+  Number of patches: 15
+  Patch 0: 30 edge faces
+  Patch 0: pev has 312 entries
+  Patch 0: 49 unique edge vertices
+    Vertex 1: touches 2 patches: [ 0 10]
+    Vertex 56: touches 2 patches: [0 5]
+    Vertex 116: touches 2 patches: [ 0 13]
+  Patch 0: Found 6 key vertices
+  Patch 1: Found 0 key vertices
+  Patch 2: Found 5 key vertices
+  Patch 3: Found 4 key vertices
+  Patch 4: Found 6 key vertices
+  Patch 5: Found 5 key vertices
+  Patch 6: Found 6 key vertices
+  Patch 7: Found 5 key vertices
+  Patch 8: Found 3 key vertices
+  Patch 9: Found 4 key vertices
+  Patch 10: Found 5 key vertices
+  Patch 11: Found 6 key vertices
+  Patch 12: Found 7 key vertices
+  Patch 13: Found 5 key vertices
+  Patch 14: Found 5 key vertices
+============================================================
+
+
+============================================================
+KEY ACCUMULATION RESULT:
+  Total keys found: 72
+  Unique key vertices: 24
+  Key vertices: [ 15  25  51 176 195 235 243 255 289 343]...
+============================================================
+
+  Zero-key patches: [1]
+patch_info_gen: Found neck edges (no key vertices on boundary).
+  Neck edge indices: [6]
+  Added synthetic shared keys (legal border only, evenly spaced) for edges with <3 shared keys.
+patch_info_gen: Cap patches (zero-key disk): [np.int64(1)]
+patch_info_gen: Cylinder patches (two boundary loops): [8]
+
+============================================================
+generate_simplified_mesh DEBUG:
+  Unique keys (indx): 28
+  Sentinel vertices added: 1
+  Total key vertices in mesh (nkeys): 29
+  npatches: 15
+  Keys shape: (80, 3)
+  Keys (first 5): [[  0 176 381]
+ [  0 195 441]
+ [  0 255 341]
+ [  0 289 645]
+ [  0 522 659]]
+  Sentinels shape: (37, 2)
+  Sentinels (first 5): [[176 528]
+ [255 522]
+ [176 522]
+ [195 528]
+ [255 289]]
+  Edges created: 166
+  Edges (first 5): [[ 4 16]
+ [16  8]
+ [ 8  9]
+ [ 9  5]
+ [ 5 17]]
+  X shape: (46, 3), Xkeyind shape: (46,)
+  Center vertices (CV): [516 148 590  26 385 752  76 510 417 524 221 558 332 775 675]
+============================================================
+
+
+  --- Patch 2 structure (why patch 2 may differ) ---
+  Patch 2 type (from patch_type_analysis): None
+  Patch 2 neighbor count: 6
+  Incident edges (eix, neighbor, chain_len): [(7, 5, 23), (8, 6, 24), (9, 9, 10), (10, 11, 23), (11, 12, 5)]
+  Patch 2 keys (m.X indices): [25, 235, 406, 707, 726] (total 5)
+  OUT_chain for patch 2: present=True, len=27
+  OUT_chain: 5 of 5 patch-2 boundary vertices appear in chain
+  --- end Patch 2 structure ---
+
+    _patch_boundary_cycle(patch 0): using OUT_chain (len=6 keys+sentinels -> 6 with crown)
+  Patch 0: Generated 6 faces from boundary cycle (len=6)
+    _patch_boundary_cycle(patch 1): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 1: Generated 5 faces from boundary cycle (len=5)
+    _patch_boundary_cycle(patch 2): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 2: reversed boundary cycle for consistent fan orientation (orient_sum=-1.9612)
+
+  --- Patch 2 diagnostic (crossed-triangle investigation) ---
+  Boundary cycle length: 5
+  Cycle (simpl indices): [23, 24, 6, 11, 2]
+  Cycle (m.X indices):   [707, 726, 235, 406, 25]
+  Consecutive segments (cycle index, mX_a, mX_b, edge (eix, p1, p2)):
+    [0] 707 -> 726  edge=(7, 2, 5)
+    [1] 726 -> 235  edge=(10, 2, 11)
+    [2] 235 -> 406  edge=(11, 2, 12)
+    [3] 406 -> 25  edge=(8, 2, 6)
+    [4] 25 -> 707  edge=(9, 2, 9)
+  --- end Patch 2 diagnostic ---
+
+  Patch 2: Generated 5 faces from boundary cycle (len=5)
+    _patch_boundary_cycle(patch 3): using OUT_chain (len=4 keys+sentinels -> 4 with crown)
+  Patch 3: Generated 4 faces from boundary cycle (len=4)
+    _patch_boundary_cycle(patch 4): using OUT_chain (len=6 keys+sentinels -> 6 with crown)
+  Patch 4: Generated 6 faces from boundary cycle (len=6)
+    _patch_boundary_cycle(patch 5): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 5: Generated 5 faces from boundary cycle (len=5)
+    _patch_boundary_cycle(patch 6): using OUT_chain (len=6 keys+sentinels -> 6 with crown)
+  Patch 6: Generated 6 faces from boundary cycle (len=6)
+    _patch_boundary_cycle(patch 7): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 7: Generated 5 faces from boundary cycle (len=5)
+    _patch_boundary_cycle(patch 8): OUT_chain missed 3 key/sentinel vertices (missing simpl: [3, 7, 19]); falling back to edge walk
+  Patch 8: Generated 12 faces from cylinder (n=3 quads)
+    _patch_boundary_cycle(patch 9): using OUT_chain (len=4 keys+sentinels -> 4 with crown)
+  Patch 9: Generated 4 faces from boundary cycle (len=4)
+    _patch_boundary_cycle(patch 10): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 10: Generated 5 faces from boundary cycle (len=5)
+    _patch_boundary_cycle(patch 11): using OUT_chain (len=6 keys+sentinels -> 6 with crown)
+  Patch 11: Generated 6 faces from boundary cycle (len=6)
+    _patch_boundary_cycle(patch 12): using OUT_chain (len=7 keys+sentinels -> 7 with crown)
+  Patch 12: Generated 7 faces from boundary cycle (len=7)
+    _patch_boundary_cycle(patch 13): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 13: Generated 5 faces from boundary cycle (len=5)
+    _patch_boundary_cycle(patch 14): using OUT_chain (len=5 keys+sentinels -> 5 with crown)
+  Patch 14: Generated 5 faces from boundary cycle (len=5)
+
+============================================================
+Face generation summary:
+  Total faces generated: 86
+  Total face labels: 86
+============================================================
+
+
+============================================================
+Patch self-intersection diagnostic (simplified mesh):
+  Patch 0: OK  (n_boundary=6, OK)
+  Patch 1: OK  (n_boundary=5, OK)
+  Patch 2: OK  (n_boundary=5, OK)
+  Patch 3: OK  (n_boundary=4, OK)
+  Patch 4: OK  (n_boundary=6, OK)
+  Patch 5: OK  (n_boundary=5, OK)
+  Patch 6: OK  (n_boundary=6, OK)
+  Patch 7: OK  (n_boundary=5, OK)
+  Patch 8: OK  (n_boundary=0, cylinder (two rings, skip))
+  Patch 9: OK  (n_boundary=4, OK)
+  Patch 10: OK  (n_boundary=5, OK)
+  Patch 11: OK  (n_boundary=6, OK)
+  Patch 12: OK  (n_boundary=7, OK)
+  Patch 13: OK  (n_boundary=5, OK)
+  Patch 14: OK  (n_boundary=5, OK)
+============================================================
+
+
+============================================================
+Simplified Mesh Validation:
+  Vertices: 49
+  Faces: 92
+  Edges: 140
+  Euler characteristic: 1
+  Genus: 0
+  Status: ✗ INVALID - 2 issue(s) found
+    - non_manifold_edges: {'edges': [(np.int64(21), np.int64(27)), (np.int64(14), np.int64(21)), (np.int64(1), np.int64(27)), (np.int64(1), np.int64(14))], 'count': 4}
+    - has_boundary: {'boundary_vertices': np.int64(29), 'message': 'Mesh has 29 boundary vertices (should be closed)'}
+============================================================
+
+
+============================================================
+Patch Boundary Diagnostics:
+============================================================
+
+Patch 8: WARNING - border2chain missed 12 border vertices
+  Attempting to fix by including missing vertices...
+  Still missing 12 vertices - appending to chain
+
+============================================================
+Patch structure report (simplified mesh)
+  Neighbors per patch: [7, 2, 6, 5, 7, 6, 7, 6, 5, 5, 6, 7, 8, 6, 6]
+  Single-neighbor patches: []
+  Neck edges (boundary only between two patches): [6]
+  Edges with fictitious keys: [17]
+  WARNING: Patches with zero key vertices: [1]. Fictitious keys will be added along their incident edges for a valid simplified mesh.
+  WARNING: Neck edges detected (boundary exclusively between two patches): [6]. Fictitious key vertices will be added along these edges for a valid simplified mesh.
+============================================================
+
+
+Simplified mesh: 49 vertices, 92 faces
+
+============================================================
+PATCH 2 DEEP DIAGNOSTIC
+============================================================
+
+Patch 2 face count: 5
+  Face 11: simpl=[31, 23, 24], mX=[590, 707, 726]
+  Face 12: simpl=[31, 24, 6], mX=[590, 726, 235]
+  Face 13: simpl=[31, 6, 11], mX=[590, 235, 406]
+  Face 14: simpl=[31, 11, 2], mX=[590, 406, 25]
+  Face 15: simpl=[31, 2, 23], mX=[590, 25, 707]
+
+Patch 8 face count: 15
+  Face 41: simpl=[37, 1, 18], mX=['fict_37', 18, 539]
+  Face 42: simpl=[37, 18, 3], mX=['fict_37', 539, 51]
+  Face 43: simpl=[37, 7, 1], mX=['fict_37', 243, 18]
+  Face 44: simpl=[38, 14, 18], mX=['fict_38', 444, 539]
+  Face 45: simpl=[38, 14, 19], mX=['fict_38', 444, 571]
+  Face 46: simpl=[38, 19, 3], mX=['fict_38', 571, 51]
+  Face 47: simpl=[38, 18, 3], mX=['fict_38', 539, 51]
+  Face 48: simpl=[39, 14, 1], mX=['fict_39', 444, 18]
+  Face 49: simpl=[39, 1, 7], mX=['fict_39', 18, 243]
+  Face 50: simpl=[39, 19, 7], mX=['fict_39', 571, 243]
+  Face 51: simpl=[39, 14, 19], mX=['fict_39', 444, 571]
+  Face 88: simpl=[37, 3, 46], mX=['fict_37', 51, 'fict_46']
+  Face 89: simpl=[37, 46, 47], mX=['fict_37', 'fict_46', 'fict_47']
+  Face 90: simpl=[37, 47, 48], mX=['fict_37', 'fict_47', 'fict_48']
+  Face 91: simpl=[37, 48, 7], mX=['fict_37', 'fict_48', 243]
+
+Non-manifold edges: 0
+
+Boundary edges (1 face only): 4
+  Edge (1, 14): patch [8]
+  Edge (1, 27): patch [1]
+  Edge (14, 21): patch [1]
+  Edge (21, 27): patch [1]
+
+Shared edges between patch 2 and patch 8:
+
+Edge (2,8) sentinels and edge_dat:
+
+Fictitious per edge: 1 edges
+  eix=17 (4,8): fictitious indices = [46, 47, 48]
+
+Done. Log: C:\Users\Khaled Khairy\Dropbox\Projects\hot\Project_spherical_parameterization\code\pySHP\tests\diagnostic_log.txt

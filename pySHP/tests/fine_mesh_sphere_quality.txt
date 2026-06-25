@@ -1,0 +1,65 @@
+Run ID: 5fe16bad  |  Timestamp: 2026-06-25 09:56:59
+======================================================================
+FINE-MESH SPHERE PARAMETERIZATION QUALITY
+Total faces: 3006
+Total foldovers: 265
+Total elongated (AR>20): 23
+STATUS: *** FOLDOVERS DETECTED -- sphere mapping has face intersections ***
+======================================================================
+
+--- Patch 0: 576 faces ---
+  Foldovers (orient < 0): 27
+  Degenerate (|orient| < 1e-14): 4
+  Elongated (AR > 20): 0
+  Orient range: [-0.028374, 0.060271]
+  Aspect ratio: mean=1.90, max=8.42
+  Worst foldover faces (face_idx, orient, AR):
+    face 424: orient=-0.028374, AR=2.66, verts=[146,189,86], edges=[0.1839,0.3238,0.4891]
+    face 213: orient=-0.026751, AR=1.64, verts=[118,250,82], edges=[0.1471,0.2411,0.1835]
+    face 179: orient=-0.017123, AR=1.34, verts=[250,118,220], edges=[0.1471,0.1215,0.1631]
+    face 547: orient=-0.015504, AR=2.15, verts=[93,189,146], edges=[0.0866,0.1839,0.1864]
+    face 65: orient=-0.015077, AR=2.25, verts=[82,45,216], edges=[0.5644,0.3224,0.2503]
+  Boundary: no self-intersections (56 edges)
+
+--- Patch 1: 871 faces ---
+  Foldovers (orient < 0): 98
+  Degenerate (|orient| < 1e-14): 2
+  Elongated (AR > 20): 5
+  Orient range: [-0.014851, 0.073276]
+  Aspect ratio: mean=2.68, max=36.49
+  Worst foldover faces (face_idx, orient, AR):
+    face 501: orient=-0.014851, AR=1.91, verts=[15,245,89], edges=[0.1289,0.1456,0.2457]
+    face 360: orient=-0.010654, AR=3.05, verts=[22,226,387], edges=[0.0614,0.1745,0.1875]
+    face 772: orient=-0.010535, AR=5.58, verts=[184,448,222], edges=[0.0484,0.2705,0.2455]
+    face 502: orient=-0.009107, AR=2.36, verts=[245,90,89], edges=[0.1496,0.0635,0.1456]
+    face 854: orient=-0.007985, AR=2.99, verts=[128,461,328], edges=[0.1784,0.1462,0.0597]
+  ** BOUNDARY SELF-INTERSECTIONS: 1 edge crossings **
+
+--- Patch 2: 1203 faces ---
+  Foldovers (orient < 0): 136
+  Degenerate (|orient| < 1e-14): 11
+  Elongated (AR > 20): 18
+  Orient range: [-0.165116, 0.168053]
+  Aspect ratio: mean=2338782366519.64, max=880373157210559.62
+  Worst foldover faces (face_idx, orient, AR):
+    face 54: orient=-0.165116, AR=2.90, verts=[283,226,353], edges=[0.6819,0.7774,0.2682]
+    face 90: orient=-0.143393, AR=3.96, verts=[373,283,353], edges=[1.0612,0.2682,0.8804]
+    face 163: orient=-0.042397, AR=2.76, verts=[65,416,21], edges=[0.2822,0.5188,0.7778]
+    face 164: orient=-0.042175, AR=3.93, verts=[416,68,21], edges=[0.1320,0.4275,0.5188]
+    face 1028: orient=-0.030418, AR=2.01, verts=[23,380,72], edges=[0.2406,0.4258,0.2115]
+  ** BOUNDARY SELF-INTERSECTIONS: 6 edge crossings **
+
+--- Patch 3: 356 faces ---
+  Foldovers (orient < 0): 4
+  Degenerate (|orient| < 1e-14): 0
+  Elongated (AR > 20): 0
+  Orient range: [-0.015236, 0.111231]
+  Aspect ratio: mean=1.79, max=11.57
+  Worst foldover faces (face_idx, orient, AR):
+    face 241: orient=-0.015236, AR=2.91, verts=[141,55,182], edges=[0.0814,0.2373,0.1987]
+    face 38: orient=-0.003977, AR=2.01, verts=[50,84,26], edges=[0.1481,0.1523,0.2984]
+    face 253: orient=-0.003270, AR=6.42, verts=[133,83,80], edges=[0.1574,0.1460,0.0245]
+    face 37: orient=-0.003020, AR=7.71, verts=[133,80,58], edges=[0.0245,0.1890,0.1713]
+  Boundary: no self-intersections (43 edges)
+
+======================================================================
