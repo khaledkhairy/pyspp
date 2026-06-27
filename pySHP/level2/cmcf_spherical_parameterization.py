@@ -608,7 +608,7 @@ def _tri_q(S, F):
 
 def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
                    step=0.04, mu_frac=2e-2, tol=1e-7, plateau_tol=2e-3,
-                   lambda_shape=0.0, verbose=True):
+                   lambda_shape=0.0, free_mask=None, verbose=True):
     """De-concentrate / equalize spherical areas with an interior-point method.
 
     Minimises ``E(S) = sum_f (q_f - Ao_f)^2 - mu * sum_f log(q_f)`` over the
@@ -697,6 +697,8 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
             ss = float(np.sqrt(np.mean(gs * gs))) + 1e-20
             g = g + lambda_shape * (sa / ss) * gs   # relative-weighted blend
         g -= np.einsum('ij,ij->i', g, S)[:, None] * S      # tangent projection
+        if free_mask is not None:               # only move the allowed vertices
+            g[~free_mask] = 0.0
         if cur_nfold == 0 and float(np.max(np.linalg.norm(g, axis=1))) < tol:
             break
         m1 = b1 * m1 + (1.0 - b1) * g
@@ -747,6 +749,42 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
     if verbose:
         print(f"  equalize_areas: area_cov {cov0:.3f} -> {cov1:.3f}, "
               f"folds {nfold0} -> {info['foldovers']} ({n_acc} steps)")
+    return mesh, info
+
+
+def local_fold_surgery(mesh, kring=2, n_iter=800, mu_frac=0.08, verbose=True):
+    """Tier-1 escalation: clear a *small* number of residual folds by inflating
+    only the folded neighbourhood.
+
+    Frees the vertices of the folded faces plus their ``kring``-ring and runs the
+    interior-point equalizer on that patch alone (rest pinned). The local
+    log-barrier strongly inflates the overlapping triangles -- which the global,
+    gently-regularised equalizer can leave behind -- without disturbing the
+    already-good remainder of the map. Returns ``(mesh, info)``.
+    """
+    F = np.asarray(mesh.F, dtype=int)
+    nv = len(mesh.X)
+    q = _tri_q(_sphere_from_tp(mesh), F)
+    folded = np.where(q <= 0)[0]
+    if len(folded) == 0:
+        return mesh, {'n_before': 0, 'n_after': 0, 'free_verts': 0}
+
+    free = np.zeros(nv, dtype=bool)
+    free[F[folded].ravel()] = True
+    nbr = _adjacency_list(F, nv)
+    for _ in range(int(kring)):
+        for v in np.where(free)[0]:
+            free[nbr[v]] = True
+
+    n0 = int(len(folded))
+    mesh, eq = equalize_areas(mesh, area_blend=1.0, n_iter=n_iter,
+                              mu_frac=mu_frac, lambda_shape=0.0,
+                              free_mask=free, plateau_tol=1e-4, verbose=False)
+    info = {'n_before': n0, 'n_after': int(eq['foldovers']),
+            'free_verts': int(free.sum())}
+    if verbose:
+        print(f"  local_fold_surgery: {n0} -> {info['n_after']} folds "
+              f"({info['free_verts']} free verts, kring={kring})")
     return mesh, info
 
 
@@ -1398,6 +1436,15 @@ def parameterize_to_sphere(
     m.F = ensure_outward_winding(m.X, m.F)
     result['m_pre'] = surface_mesh(m.X.copy(), m.F.copy())
 
+    # Cheap shape-complexity descriptors (pre-flight hardness predictor: very
+    # low Q / high kappa shapes -- e.g. a hydra, Q~0.007 -- cannot be embedded
+    # on a sphere by ANY conformal map and are flagged rather than fought).
+    try:
+        from .tiered_spherical_parameterization import estimate_complexity
+        result['complexity'] = estimate_complexity(m, verbose=False)
+    except Exception:                                       # noqa: BLE001
+        result['complexity'] = {}
+
     # ---- Stage 1: cMCF ---------------------------------------------------- #
     if verbose:
         print("\n" + "=" * 60)
@@ -1461,8 +1508,49 @@ def parameterize_to_sphere(
     result['stage2_diag'] = diag2
     result['mesh'] = m
 
+    # ---- Stage 2c: escalation gate (only triggers when NOT bijective) ---- #
+    # The trigger is the actual residual foldover count (ground-truth failure
+    # signal), so a clean map pays nothing extra (no degradation, no wasted
+    # compute):
+    #   0 folds            -> done.
+    #   few folds          -> Tier-1 local fold surgery (cheap, localized).
+    #   many / high-kappa  -> flag 'too_complex' (a near-degenerate shape such as
+    #                         a hydra folds at every resolution; conformal SHP
+    #                         cannot embed it, so we do NOT burn compute on it).
+    from .tiered_spherical_parameterization import INTRACTABLE_KAPPA
+    nf = int(diag2['n_foldovers'])
+    n_faces = max(len(m.F), 1)
+    kappa = float(result.get('complexity', {}).get('kappa', 0.0))
+    surgery_max = max(50, int(0.02 * n_faces))
+    near_tol = max(3, int(0.003 * n_faces))
+    quality = 'bijective'
+    if nf > 0:
+        if nf <= surgery_max and kappa <= INTRACTABLE_KAPPA:
+            if verbose:
+                print("\n" + "=" * 60)
+                print(f"Stage 2c: {nf} residual folds -> Tier-1 local surgery")
+                print("=" * 60)
+            m, surg = local_fold_surgery(m, verbose=verbose)
+            result['surgery'] = surg
+            diag2 = sphere_diagnostics(m, verbose=verbose)
+            result['stage2_diag'] = diag2
+            result['mesh'] = m
+            nf = int(diag2['n_foldovers'])
+        if nf == 0:
+            quality = 'bijective'
+        elif nf <= near_tol:
+            quality = 'near_bijective'
+        else:
+            quality = 'too_complex'
+        if verbose:
+            print(f"  escalation: quality={quality} ({nf} folds, "
+                  f"kappa={kappa:.2f})")
+    result['quality'] = quality
+    result['n_foldovers'] = nf
+
     # ---- Stage 2b: stretch-aligned anisotropic refinement (look-ahead) --- #
-    if aniso_rounds > 0:
+    # Only on a bijective map (refining a folded map amplifies it).
+    if aniso_rounds > 0 and quality == 'bijective':
         if verbose:
             print("\n" + "=" * 60)
             print(f"Stage 2b: anisotropic refinement ({aniso_rounds} rounds, "
@@ -1494,8 +1582,8 @@ def parameterize_to_sphere(
         print("\n" + "=" * 60)
         print("Done. Summary")
         print("=" * 60)
-        print(f"  method={result['method']}  "
-              f"folds: stage1={diag1['n_foldovers']} -> final={diag2['n_foldovers']}")
+        print(f"  method={result['method']}  quality={result['quality']}  "
+              f"folds: stage1={diag1['n_foldovers']} -> final={result['n_foldovers']}")
         print(f"  final: bijective={diag2['bijective']} "
               f"min_q={diag2['min_quality']:.3f} "
               f"max_shear={diag2['max_shear']:.2f} "
