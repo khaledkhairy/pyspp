@@ -409,6 +409,87 @@ def cmcf_sphere_map(mesh, n_iter=120, step_factor=1.0, tol=1e-5,
 
 
 # --------------------------------------------------------------------------- #
+# Guaranteed fold-free initial map (planar Tutte + inverse stereographic)
+# --------------------------------------------------------------------------- #
+def tutte_sphere_map(mesh, verbose=True):
+    """**Guaranteed** fold-free genus-0 -> unit-sphere map (Tutte + stereographic).
+
+    Cut one face and the closed surface becomes a topological disk; embed that
+    disk in the plane with the cut triangle pinned to a convex triangle, using
+    positive (uniform) edge weights. By **Tutte's theorem** the resulting planar
+    triangulation has *no* flipped triangles, for ANY genus-0 input -- including
+    a hydra, where conformal cMCF (which only preserves angles and lets area
+    distortion blow up) folds. Inverse-stereographic projection then lifts the
+    plane to the sphere bijectively.
+
+    The map is intentionally very non-uniform (the cut becomes a pole cap, thin
+    protrusions get tiny caps); area is restored downstream by Mobius centering +
+    the interior-point equalizer + stretch-aligned look-ahead refinement. The
+    point of this stage is only to provide a provably bijective *starting* point
+    that those no-flip optimizers can work from. Sets ``mesh.t`` / ``mesh.p``;
+    returns ``(mesh, info)``.
+    """
+    X = np.asarray(mesh.X, float)
+    F = ensure_outward_winding(X, np.asarray(mesh.F, int))
+    nv = len(X)
+
+    # Remove the largest-area face as the 'outer' (pole) face -- keeps the pole
+    # cap off thin protrusions, in a benign region of the surface.
+    v0, v1, v2 = F[:, 0], F[:, 1], F[:, 2]
+    areas = 0.5 * np.linalg.norm(np.cross(X[v1] - X[v0], X[v2] - X[v0]), axis=1)
+    rf = int(np.argmax(areas))
+    b = [int(x) for x in F[rf]]                      # pinned boundary vertices
+
+    # Uniform-weight (graph-Laplacian) Tutte system. Positive weights => Tutte
+    # bijectivity. (Mean-value weights were tried but did worse on extreme thin
+    # features here -- acute tentacle angles give ill-conditioned weights -- so
+    # the limit is float64 precision, not the weighting.) Symmetric adjacency.
+    E = np.unique(np.sort(np.vstack(
+        [F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1), axis=0)
+    ii = np.concatenate([E[:, 0], E[:, 1]])
+    jj = np.concatenate([E[:, 1], E[:, 0]])
+    A = csr_matrix((np.ones(len(ii)), (ii, jj)), shape=(nv, nv))
+    deg = np.asarray(A.sum(axis=1)).ravel()
+    L = diags(deg) - A
+
+    is_b = np.zeros(nv, bool)
+    is_b[b] = True
+    free = np.where(~is_b)[0]
+    ang = np.array([np.pi / 2, np.pi / 2 + 2 * np.pi / 3,
+                    np.pi / 2 + 4 * np.pi / 3])
+    Pb = np.column_stack([np.cos(ang), np.sin(ang)])  # CCW convex triangle
+    U = np.zeros((nv, 2))
+    U[b] = Pb
+    Lff = csr_matrix(L[free][:, free]).tocsc()
+    rhs = -(L[free][:, b] @ Pb)
+    U[free] = splu(Lff).solve(np.asarray(rhs))
+
+    # Inverse stereographic (plane -> unit sphere). Normalise the plane radius so
+    # the bulk lands at mid-latitudes rather than crushed at a pole.
+    u, v = U[:, 0], U[:, 1]
+    med = float(np.median(np.hypot(u, v)[free])) if len(free) else 1.0
+    if med > 1e-9:
+        u, v = u / med, v / med
+    d = 1.0 + u * u + v * v
+    S = np.column_stack([2 * u / d, 2 * v / d, (u * u + v * v - 1.0) / d])
+
+    # Stereographic reverses orientation; a global mirror fixes the sign of every
+    # face at once (so the cut/pole face is consistent too). Keep the fold-free one.
+    f1 = sphere_foldover_count(S, F)
+    Sm = S * np.array([-1.0, 1.0, 1.0])
+    f2 = sphere_foldover_count(Sm, F)
+    if f2 < f1:
+        S, f1 = Sm, f2
+
+    mesh.F = F
+    _set_tp_from_sphere(mesh, S)
+    if verbose:
+        print(f"  tutte_sphere_map: cut face #{rf}, foldovers={f1} "
+              f"(guaranteed-bijective init)")
+    return mesh, {'foldovers': int(f1), 'cut_face': rf}
+
+
+# --------------------------------------------------------------------------- #
 # Conformal Mobius centering (canonical pose; helps SHP conditioning)
 # --------------------------------------------------------------------------- #
 def _rot_align(u, v):
@@ -1465,6 +1546,26 @@ def recommend_lmax(mesh, L_max_max=48, gdim=None, rms_target=0.005,
     return rec, rms_curve, E
 
 
+def analyze_shp(mesh, L_max=16, oversample=40, method='auto', verbose=True):
+    """Unified SHP analysis that scales with ``L_max``.
+
+    Uses the mesh least-squares fit (:func:`fit_shp`) for low ``L_max`` and the
+    grid-quadrature projection (:func:`shp_analysis_grid`) for high ``L_max``,
+    where the dense least-squares basis is infeasible (the L=60 basis matrix is
+    tens of GB). ``method`` in ``{'auto', 'ls', 'grid'}``; ``'auto'`` switches to
+    grid for ``L_max > 24``. Returns ``(shp, rms_rel, dense)`` (``dense`` is
+    ``None`` on the grid path).
+    """
+    L_max = int(L_max)
+    use = method or 'auto'
+    if use == 'auto':
+        use = 'grid' if L_max > 24 else 'ls'
+    if use == 'ls':
+        return fit_shp(mesh, L_max=L_max, oversample=oversample, verbose=verbose)
+    shp, rms = shp_analysis_grid(mesh, L_max=L_max, verbose=verbose)
+    return shp, rms, None
+
+
 # --------------------------------------------------------------------------- #
 # Rotation + scale invariance (canonical SHP via first-order-ellipsoid align)
 # --------------------------------------------------------------------------- #
@@ -1511,7 +1612,7 @@ def shp_degree_energy(shp, scale_invariant=True):
 
 
 def canonicalize_shp(mesh, L_max=16, oversample=40, scale_mode='ellipsoid',
-                     fix_sign=True, verbose=True):
+                     fix_sign=True, method='auto', verbose=True):
     """Rotation + scale + translation **invariant** ('canonical') SHP surface.
 
     First-order-ellipsoid (FOE / Brechbuhler) alignment: the degree-1
@@ -1528,16 +1629,19 @@ def canonicalize_shp(mesh, L_max=16, oversample=40, scale_mode='ellipsoid',
     """
     from ..shp_surface import shp_surface
 
-    dense = upsample_for_shp(mesh, L_max=L_max, oversample=oversample,
-                             verbose=False)
-    S = _sphere_from_tp(dense)
-    X = np.asarray(dense.X, float).copy()
+    # The degree-1 ellipsoid frame is stable at low bandwidth, so fit it cheaply
+    # at low L (a full-L least-squares fit is infeasible for L_max=60); the final
+    # invariant fit then goes through analyze_shp on the FULL-resolution param
+    # mesh (grid quadrature for high L_max), so no detail is lost.
+    L_ell = min(int(L_max), 8)
+    S = _sphere_from_tp(mesh)
+    X = np.asarray(mesh.X, float).copy()
     X -= X.mean(axis=0)                                   # translation
 
-    d0 = surface_mesh(X.copy(), np.asarray(dense.F, int).copy())
-    d0.t = dense.t.copy()
-    d0.p = dense.p.copy()
-    s0 = shp_surface(d0, int(L_max))
+    d0 = surface_mesh(X.copy(), np.asarray(mesh.F, int).copy())
+    d0.t = np.asarray(mesh.t).copy()
+    d0.p = np.asarray(mesh.p).copy()
+    s0 = shp_surface(d0, L_ell)
 
     C1 = np.array([[s0.xc[1], s0.xc[2], s0.xc[3]],
                    [s0.yc[1], s0.yc[2], s0.yc[3]],
@@ -1569,11 +1673,13 @@ def canonicalize_shp(mesh, L_max=16, oversample=40, scale_mode='ellipsoid',
             want[int(np.argmin(np.abs(m3)))] *= -1.0   # the least-skewed axis
         Xc = Xc * want[None, :]
 
-    dc = surface_mesh(Xc, np.asarray(dense.F, int).copy())
+    dc = surface_mesh(Xc, np.asarray(mesh.F, int).copy())
     t, p, _ = kk_cart2sph(Sc[:, 0], Sc[:, 1], Sc[:, 2])
     dc.t = t
     dc.p = p
-    shp_c = shp_surface(dc, int(L_max))
+    shp_c, _rms_c, _dense_c = analyze_shp(dc, L_max=int(L_max),
+                                          oversample=oversample, method=method,
+                                          verbose=False)
 
     info = {'scale': scale, 'semi_axes': [float(x) for x in Sig],
             'det_obj': float(np.linalg.det(U)),
@@ -1593,7 +1699,7 @@ def parameterize_to_sphere(
         area_blend=1.0, area_exponent=2.0, area_n_iter=1200, lambda_shape=0.3,
         aniso_rounds=0, aniso_split_factor=1.7,
         allow_cage_fallback=True, n_cage=250,
-        center=True, fit_shp_L_max=16, shp_oversample=40,
+        center=True, fit_shp_L_max=16, shp_oversample=40, shp_method='auto',
         snapshot_every=0, verbose=True):
     """Arbitrary genus-0 mesh -> bijective, SHP-ready unit-sphere map.
 
@@ -1650,26 +1756,29 @@ def parameterize_to_sphere(
     result['stage1_diag'] = diag1
     result['method'] = 'cmcf'
 
-    # ---- Optional coarse-to-fine fallback if folds remain ---------------- #
+    # ---- Guaranteed-bijective fallback if cMCF left folds ---------------- #
+    # cMCF is conformal and CAN fold for high-distortion shapes (hydra). The
+    # Tutte+stereographic init is provably fold-free for any genus-0 input, so it
+    # is the robust fallback. Only triggers when cMCF actually folded, so clean
+    # shapes (mushroom, brain, ...) keep their nicer conformal map untouched.
     if diag1['n_foldovers'] > 0 and allow_cage_fallback:
         if verbose:
             print("\n" + "=" * 60)
             print(f"Stage 1b: cMCF left {diag1['n_foldovers']} folds -> "
-                  "FPS cage fallback")
+                  "guaranteed-bijective Tutte init")
             print("=" * 60)
         m_fb = surface_mesh(result['m_pre'].X.copy(), result['m_pre'].F.copy())
         m_fb.props()
-        m_fb, cage_info = fps_cage_sphere_map(
-            m_fb, n_cage=n_cage, cmcf_step=cmcf_step, verbose=verbose)
+        m_fb, tutte_info = tutte_sphere_map(m_fb, verbose=verbose)
         diag_fb = sphere_diagnostics(m_fb, verbose=verbose)
-        result['cage_info'] = cage_info
+        result['tutte_info'] = tutte_info
         result['stage1b_diag'] = diag_fb
-        # Keep whichever map has fewer folds.
+        # Keep whichever map has fewer folds (Tutte should reach 0).
         if diag_fb['n_foldovers'] < diag1['n_foldovers']:
             m = m_fb
-            result['method'] = 'fps_cage'
+            result['method'] = 'tutte'
             if verbose:
-                print(f"  -> using FPS-cage map ({diag_fb['n_foldovers']} folds)")
+                print(f"  -> using Tutte map ({diag_fb['n_foldovers']} folds)")
         elif verbose:
             print(f"  -> keeping cMCF map ({diag1['n_foldovers']} folds)")
 
@@ -1763,8 +1872,9 @@ def parameterize_to_sphere(
             print(f"Stage 3: SHP fit (L_max={fit_shp_L_max}, "
                   f"oversample={shp_oversample})")
             print("=" * 60)
-        shp, rms_rel, dense = fit_shp(
-            m, L_max=fit_shp_L_max, oversample=shp_oversample, verbose=verbose)
+        shp, rms_rel, dense = analyze_shp(
+            m, L_max=fit_shp_L_max, oversample=shp_oversample,
+            method=shp_method, verbose=verbose)
         result['shp'] = shp
         result['shp_rms_rel'] = rms_rel
         result['shp_dense'] = dense

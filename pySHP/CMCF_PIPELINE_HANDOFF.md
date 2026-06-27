@@ -34,8 +34,13 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
 
 ## Pipeline stages (`parameterize_to_sphere`)
 0. **preprocess** — repair + keep-largest + curvature-adaptive remesh.
-1. **cMCF** (`cmcf_sphere_map`) — conformalized mean-curvature flow -> bijective
-   sphere map; adaptive tangential untangle (`_untangle_spherical`).
+1. **cMCF** (`cmcf_sphere_map`) — conformalized mean-curvature flow -> sphere map;
+   adaptive tangential untangle. NOTE: cMCF is *conformal*, NOT guaranteed
+   bijective -- it folds for high-distortion shapes (hydra).
+1b. **guaranteed-bijective fallback** — fires ONLY when cMCF leaves folds (so
+   clean shapes keep their nicer conformal map, no degradation/extra compute).
+   `tutte_sphere_map` (planar Tutte + inverse stereographic; provably fold-free
+   in exact arithmetic). Keeps whichever of cMCF / fallback has fewest folds.
 1c. **Mobius centering** (`mobius_center`) — conformal, area-weighted centroid -> 0.
 2. **equalize_areas** — interior-point Adam, log-barrier; **untangles from folded
    starts** (accepts steps that don't increase folds); keep-best by (folds, cov);
@@ -47,16 +52,22 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
 2b. **anisotropic refinement** (`anisotropic_rounds`) — stretch-aligned: split the
     3-D edges the map stretched (long on sphere) + re-equalize (warm start);
     GATED on fold-free (refining a folded map explodes). ~2x thin-feature fidelity.
-3. **SHP fit** (`fit_shp`) — upsample mesh on sphere + least-squares.
+3. **SHP fit** (`analyze_shp`) — least-squares (`fit_shp`) for low L_max, grid
+   quadrature (`shp_analysis_grid`) for high L_max; 'auto' switches above L=24.
 Result dict keys: `mesh, shp, quality, n_foldovers, complexity, shp_rms_rel,
-stage1_diag, stage2_diag, aniso_history, surgery, ...`.
+stage1_diag, stage1b_diag, tutte_info, stage2_diag, aniso_history, surgery, ...`.
 
-## Status on test_set (target_verts~2000, L_max=16)
-- 7/9 **bijective** (~0.7% RMS): BDH6230 brain, echinocyte, mushroom(x4), zebrafish.
-- `1dpx` **near_bijective** (1 fold, ~1% RMS) — localized kernel-empty tangle.
-- `hydra_full_smooth` **too_complex** — `Q=0.007` (sphere=1.0), folds at ALL
-  resolutions; conformal maps fundamentally cannot embed it (tested: more faces
-  made it worse). Flagged, not fought. (1dpx, a real protein, is Q=0.200 and fine.)
+## Status on test_set (now: target_verts~2000, **L_max=60** default in batch)
+- 7/9 **bijective**: BDH6230 brain, echinocyte, mushroom(x4), zebrafish.
+- `1dpx` (protein) **near_bijective** (3 folds); SHP RMS **0.09%** at L=60
+  (was 0.51% at L=16). cMCF path (Tutte fallback was worse here, so gate kept cMCF).
+- `hydra_full_smooth` **too_complex** — Tutte fallback cut folds **261 -> 35** (vs
+  cMCF), confirming the bijective-start architecture, but it does NOT reach 0: a
+  float64 PRECISION WALL (tentacle/body area ratio exceeds machine precision at
+  2k verts -> tentacles collapse to sub-epsilon triangles that underflow into
+  spurious folds). Mean-value weights were WORSE (117) -> it's precision, not
+  weighting. The principled fix is a progressive/multiresolution embedding
+  (validity-by-construction, no global ill-conditioned solve) -- see NEXT.
 
 ## Conventions / gotchas (IMPORTANT)
 - Spherical: `kk_cart2sph`/`kk_sph2cart`; `t`=colatitude∈[0,π], `p`=azimuth.
@@ -101,12 +112,26 @@ Validation (params at target_verts~2000; grid `gdim=2*L+2`):
   mushroom L=23 (its thin stalk is genuinely higher-frequency -> needs more band).
 - L=72 cost is dominated by the `Y` build (5329 `lpmv` calls), not the solve.
 
-## NEXT (grid-quadrature follow-ups)
-- WIRE INTO PIPELINE/BATCH: let `fit_shp`/`parameterize_to_sphere`/the batch
-  notebook use `shp_analysis_grid` when `L_max` is high (e.g. > ~24) and emit the
-  `recommend_lmax` value per mesh in the summary table + as a `.shp3` sidecar.
-- For real protein detail, raise input `target_verts` (14-15k) so the mesh, not L,
-  is the limiter; then recommend_lmax will climb.
+## DONE (this session): L_max=60 wiring + guaranteed-bijective Tutte fallback
+- `analyze_shp(mesh, L_max, method='auto')` routes low L -> least-squares, high L
+  -> grid quadrature. `parameterize_to_sphere` (Stage 3) and `canonicalize_shp`
+  both go through it, so the whole pipeline scales to L=60 (LS is infeasible there).
+  `canonicalize_shp` fits the degree-1 ellipsoid cheaply at low L, final fit via
+  grid on the FULL-res mesh. Batch notebook `L_MAX=60`.
+- `tutte_sphere_map` (Stage 1b fallback). Validated end-to-end at L=60 (1dpx
+  recon/canon/reconstruct all fine; ~35s/mesh).
+
+## NEXT
+- IN PROGRESS: `progressive_sphere_map` (multiresolution bijective embedding):
+  coarsen to a tetrahedron via vertex removals (record link + incident faces),
+  embed the tetra on the sphere, then re-insert each vertex at the spherical
+  centroid of its (already-placed) link (in the polygon kernel -> no flip; local
+  fix if centroid lands outside). Validity-by-construction sidesteps the global
+  ill-conditioned solve / underflow that caps Tutte on a hydra. Wire as the
+  Stage-1b fallback (keep-best of cMCF / progressive / Tutte); must NOT degrade
+  the 7 clean shapes (only fires when cMCF folds).
+- `recommend_lmax` per-mesh value into the batch summary + `.shp3` sidecar (the
+  user has fixed L=60 for now, so lower priority).
 - Optional: speed the high-L `Y` build (vectorize/cache `lpmv` across L) for cloud.
 
 ## Other backlog
