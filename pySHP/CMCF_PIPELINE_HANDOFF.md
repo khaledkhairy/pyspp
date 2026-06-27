@@ -17,6 +17,7 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
   `pySHP/tests/test_cmcf_spherical_parameterization_01.ipynb`
 - **Batch notebook** (loops `test_set/`, writes 5 artifacts + quality table):
   `pySHP/tests/test_cmcf_batch_testing_01.ipynb`
+- **CLI smoke test**: `pySHP/tests/run_parameterization_test.py`
 - Test meshes: `code/Matlab/shp_toolbox-main/shp_toolbox-main/test_data/off/test_set/`
 - Outputs: `Project_spherical_parameterization/Projection_output/` (outside repo)
 - `sh_basis` / `shp_surface` (SH basis + surface): `pySHP/sh_basis.py`, `pySHP/shp_surface.py`
@@ -121,18 +122,34 @@ Validation (params at target_verts~2000; grid `gdim=2*L+2`):
 - `tutte_sphere_map` (Stage 1b fallback). Validated end-to-end at L=60 (1dpx
   recon/canon/reconstruct all fine; ~35s/mesh).
 
+## ATTEMPTED + REVERTED: progressive/multiresolution embedding (needs more work)
+Built `progressive_sphere_map` (decimate by manifold-safe vertex removals -> Tutte
+on a small base -> re-insert each vertex by its link). TWO placement schemes tried:
+- spherical centroid: folds scale with #reinsertions (mushroom 521, hydra 1216);
+  larger base only reduces proportionally (base=800 still 71 on mushroom).
+- in-kernel "max-min-margin" placement: WORSE (mushroom 942) -- a single bad early
+  placement tangles later links (cascade); the fold-free invariant isn't actually
+  held. Both REVERTED (degrade even easy shapes, violating the no-degrade rule).
+A correct version is real Praun-Hoppe-grade work: a *validated* fold-free base
+(check base foldovers), provably-in-kernel placement with consistent orientation,
+and per-level flip-free relaxation; only then wire as a keep-best Stage-1b fallback.
+IMPORTANT empirical finding: higher resolution makes hydra WORSE (Tutte folds 2k=41,
+5k=604) -> confirms a float64 precision wall (smaller tentacle triangles underflow).
+So even a correct progressive may not fully clear hydra; multi-chart or extended
+precision may ultimately be needed for the most extreme (Q~0.007) shapes.
+
 ## NEXT
-- IN PROGRESS: `progressive_sphere_map` (multiresolution bijective embedding):
-  coarsen to a tetrahedron via vertex removals (record link + incident faces),
-  embed the tetra on the sphere, then re-insert each vertex at the spherical
-  centroid of its (already-placed) link (in the polygon kernel -> no flip; local
-  fix if centroid lands outside). Validity-by-construction sidesteps the global
-  ill-conditioned solve / underflow that caps Tutte on a hydra. Wire as the
-  Stage-1b fallback (keep-best of cMCF / progressive / Tutte); must NOT degrade
-  the 7 clean shapes (only fires when cMCF folds).
+- Progressive embedding, done properly (above), OR accept hydra-class as flagged.
 - `recommend_lmax` per-mesh value into the batch summary + `.shp3` sidecar (the
   user has fixed L=60 for now, so lower priority).
 - Optional: speed the high-L `Y` build (vectorize/cache `lpmv` across L) for cloud.
+
+## Resolution / test
+- Batch now `TARGET_VERTS = 7000` (user: raise everybody to 6-8k for detail).
+  (Hydra stays flagged regardless; 7k benefits the 8 good shapes.)
+- CLI smoke test (no notebook): `python pySHP/tests/run_parameterization_test.py`
+  (optional mesh-name args; `--verts`, `--lmax`, `--aniso`). Prints method /
+  bijectivity / folds / RMS / time per mesh.
 
 ## Other backlog
 - Optional: route `too_complex` shapes to the old patch-based pipeline (user
