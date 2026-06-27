@@ -1275,6 +1275,197 @@ def fit_shp(mesh, L_max=16, oversample=40, max_subdiv=3, verbose=True):
 
 
 # --------------------------------------------------------------------------- #
+# High-L_max SH analysis via grid resampling + quadrature
+# (keeps the sh_basis 'bosh' convention; scales to L_max=72 where the mesh
+#  least-squares fit becomes infeasible -- L=72 basis matrix ~22 GB).
+# --------------------------------------------------------------------------- #
+def resample_to_grid(mesh, basis, k=12):
+    """Barycentrically resample the parameterized surface onto the ``sh_basis``
+    Gauss-quadrature grid.
+
+    For each grid direction we find the parameterized spherical triangle that
+    contains it (nearest face centroids, then the one whose barycentric
+    coordinates are all non-negative) and linearly interpolate the 3-D position.
+    Returns ``(f_grid (Ngrid, 3), G (Ngrid, 3) unit directions)``.
+    """
+    S = _sphere_from_tp(mesh)
+    F = np.asarray(mesh.F, dtype=int)
+    X = np.asarray(mesh.X, dtype=float)
+    gt = np.asarray(basis.t).reshape(-1)
+    gp = np.asarray(basis.p).reshape(-1)
+    gx, gy, gz = kk_sph2cart(gt, gp, np.ones_like(gt))
+    G = np.column_stack([gx, gy, gz])
+
+    cen = S[F].mean(axis=1)
+    cen = cen / np.maximum(np.linalg.norm(cen, axis=1, keepdims=True), 1e-15)
+    k = int(min(k, len(F)))
+    _, cand = cKDTree(cen).query(G, k=k)
+    if cand.ndim == 1:
+        cand = cand[:, None]
+
+    M = np.transpose(S[F], (0, 2, 1))           # (nf,3,3): columns are vertices
+    Minv = np.linalg.pinv(M)                     # robust for sliver faces
+    bc = np.einsum('nkij,nj->nki', Minv[cand], G)   # (Ng,k,3) cone coords
+    best = np.argmax(bc.min(axis=2), axis=1)        # face most containing G
+    rows = np.arange(len(G))
+    fsel = cand[rows, best]
+    bsel = bc[rows, best]
+    bsel = bsel / np.maximum(bsel.sum(axis=1, keepdims=True), 1e-15)
+    fg = np.einsum('ni,nij->nj', bsel, X[F[fsel]])
+    return fg, G
+
+
+def _quadrature_basis(L_max, gdim):
+    """An ``sh_basis`` carrying only the Gauss grid + ``Y`` (+ ``w``).
+
+    ``sh_basis.__init__`` eagerly builds six ``(gdim, gdim, (L+1)^2)`` arrays
+    (``Y`` plus five derivatives) -- ~5.4 GB and slow at ``L=72, gdim=146`` -- but
+    analysis needs only ``Y`` and the quadrature weights, so we build those alone
+    (still a genuine ``sh_basis`` instance, so ``shp_surface`` accepts it).
+    """
+    from ..sh_basis import sh_basis
+    b = sh_basis.__new__(sh_basis)
+    b.basis = 'bosh'
+    b.L_max = int(L_max)
+    b.gdim = int(gdim)
+    t, wt = sh_basis.gaussquad(gdim, 0, np.pi)
+    p, wp = sh_basis.gaussquad(gdim, 0, 2 * np.pi)
+    P, T = np.meshgrid(p, t)
+    b.p, b.t = P, T
+    WP, WT = np.meshgrid(wp, wt)
+    b.w = (WP * WT).flatten()
+    b.Y, _P = sh_basis.ylk_cos_sin_bosh(b.p, b.t, int(L_max))
+    return b
+
+
+def shp_analysis_grid(mesh, L_max=32, gdim=None, method='auto', verbose=True):
+    """High-``L_max`` SH analysis: resample the parameterized surface onto the
+    ``sh_basis`` grid, then project with that basis (keeps the 'bosh' convention
+    / ``.shp3`` compatibility). Scales where ``fit_shp`` (mesh least-squares)
+    cannot.
+
+    ``method``:
+      * ``'diag'``  -- diagonal quadrature ``c = (sum w f Y)/(sum w Y^2)`` (fast,
+        exact iff the basis is orthogonal under this quadrature).
+      * ``'galerkin'`` -- solve the normal equations ``(Y^T W Y) c = Y^T W f``
+        (robust to azimuthal non-orthogonality; an ``Ncoef x Ncoef`` solve).
+      * ``'auto'`` (default) -- diag, then galerkin if the grid round-trip is poor.
+
+    Returns ``(shp, rms_rel)`` where ``rms_rel`` is the band-limit residual on
+    the grid, relative to the bounding-box diagonal.
+    """
+    from ..shp_surface import shp_surface
+
+    L_max = int(L_max)
+    if gdim is None:
+        gdim = max(2 * L_max + 2, 32)
+    basis = _quadrature_basis(L_max, gdim)
+    fg, _G = resample_to_grid(mesh, basis)
+    ncoef = (L_max + 1) ** 2
+    Y = np.asarray(basis.Y).reshape(-1, ncoef)      # (Ngrid, ncoef)
+    # round-sphere measure is sin(theta) dtheta dphi; basis.w is the bare
+    # Gauss product weight (the sin(theta)/metric lives in SSn elsewhere), so
+    # fold it in here -- without it the basis is not orthogonal and the diagonal
+    # quadrature aliases.
+    w = np.asarray(basis.w).reshape(-1) * np.sin(np.asarray(basis.t).reshape(-1))
+    wY = w[:, None] * Y
+
+    def _diag():
+        nrm = np.einsum('gc,gc->c', wY, Y)
+        nrm = np.where(np.abs(nrm) > 1e-12, nrm, 1.0)
+        return (wY.T @ fg) / nrm[:, None]
+
+    def _galerkin():
+        Gmat = wY.T @ Y                             # (ncoef, ncoef)
+        Gmat[np.diag_indices_from(Gmat)] += 1e-9 * np.max(np.abs(np.diag(Gmat)))
+        return np.linalg.solve(Gmat, wY.T @ fg)
+
+    if method == 'galerkin':
+        clks = _galerkin()
+    elif method == 'diag':
+        clks = _diag()
+    else:                                            # auto
+        clks = _diag()
+        res = np.sqrt(np.mean(np.sum((Y @ clks - fg) ** 2, axis=1)))
+        scl = np.sqrt(np.mean(np.sum(fg ** 2, axis=1))) + 1e-15
+        if res / scl > 0.05:                         # poor -> robust solve
+            if verbose:
+                print(f"  shp_analysis_grid: diag round-trip {100*res/scl:.1f}% "
+                      "-> switching to galerkin")
+            clks = _galerkin()
+
+    s = shp_surface(L_max, basis)
+    s.xc = clks[:, 0].copy()
+    s.yc = clks[:, 1].copy()
+    s.zc = clks[:, 2].copy()
+    s.X_o = np.concatenate([s.xc, s.yc, s.zc])
+    s.needs_updating = True
+    s.update()
+
+    recon = Y @ clks
+    diag = float(np.linalg.norm(mesh.X.max(0) - mesh.X.min(0))) or 1.0
+    rms_rel = float(np.sqrt(np.mean(np.sum((recon - fg) ** 2, axis=1)))) / diag
+    if verbose:
+        print(f"  shp_analysis_grid: L_max={L_max} gdim={gdim} grid={len(w)} "
+              f"-> grid-RMS={100 * rms_rel:.2f}%")
+    return s, rms_rel
+
+
+def recommend_lmax(mesh, L_max_max=48, gdim=None, rms_target=0.005,
+                   verbose=True):
+    """Recommend an ``L_max`` for **this** mesh from its reconstruction
+    RMS-vs-bandwidth curve (the honest "complexity -> required bandwidth" link).
+
+    Truncating the SH series at degree ``L`` leaves a residual equal to the
+    energy in degrees ``> L``; so ``RMS(L)`` *is* the fidelity at bandwidth ``L``.
+    We do a single grid-quadrature fit at ``L_max_max`` and then incrementally
+    truncate (reusing the same basis -- one cheap pass) to read off ``RMS(L)``
+    for every ``L``. The recommendation is the smallest ``L`` whose grid
+    reconstruction RMS falls to ``rms_target`` (relative to the bounding-box
+    diagonal); if it never does (mesh richer than ``L_max_max``), returns
+    ``L_max_max`` -- a signal to raise it (and/or use a denser input mesh).
+
+    Unlike a fixed cumulative-power threshold, this adapts to the mesh's actual
+    detail and discriminates simple from convoluted shapes. Returns
+    ``(recommended_L, rms_curve, E_per_degree)`` where ``rms_curve[L]`` is the
+    relative RMS at bandwidth ``L`` and ``E_per_degree`` is the SH power spectrum.
+    """
+    L_max_max = int(L_max_max)
+    if gdim is None:
+        gdim = max(2 * L_max_max + 2, 32)
+    basis = _quadrature_basis(L_max_max, gdim)
+    fg, _G = resample_to_grid(mesh, basis)
+    ncoef = (L_max_max + 1) ** 2
+    Y = np.asarray(basis.Y).reshape(-1, ncoef)
+    w = np.asarray(basis.w).reshape(-1) * np.sin(np.asarray(basis.t).reshape(-1))
+    wY = w[:, None] * Y
+    nrm = np.einsum('gc,gc->c', wY, Y)
+    nrm = np.where(np.abs(nrm) > 1e-12, nrm, 1.0)
+    clks = (wY.T @ fg) / nrm[:, None]                    # (ncoef, 3)
+
+    diag = float(np.linalg.norm(mesh.X.max(0) - mesh.X.min(0))) or 1.0
+    recon = np.zeros_like(fg)
+    rms_curve = np.zeros(L_max_max + 1)
+    E = np.zeros(L_max_max + 1)
+    for l in range(L_max_max + 1):
+        blk = slice(l * l, (l + 1) * (l + 1))
+        recon = recon + Y[:, blk] @ clks[blk]
+        rms_curve[l] = np.sqrt(np.mean(np.sum((recon - fg) ** 2, axis=1))) / diag
+        E[l] = np.sqrt(np.sum(clks[blk] ** 2))
+
+    below = np.where(rms_curve <= float(rms_target))[0]
+    rec = int(below[0]) if below.size else L_max_max
+    rec = int(np.clip(rec, 1, L_max_max))
+    if verbose:
+        print(f"  recommend_lmax: target RMS={100*rms_target:.2f}% -> L_max={rec} "
+              f"(RMS@L: 8={100*rms_curve[min(8,L_max_max)]:.2f}% "
+              f"16={100*rms_curve[min(16,L_max_max)]:.2f}% "
+              f"32={100*rms_curve[min(32,L_max_max)]:.2f}% "
+              f"{L_max_max}={100*rms_curve[-1]:.2f}%)")
+    return rec, rms_curve, E
+
+
+# --------------------------------------------------------------------------- #
 # Rotation + scale invariance (canonical SHP via first-order-ellipsoid align)
 # --------------------------------------------------------------------------- #
 def _l1_basis_at_axes(shp):

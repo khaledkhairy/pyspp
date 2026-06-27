@@ -71,32 +71,43 @@ stage1_diag, stage2_diag, aniso_history, surgery, ...`.
 - **SHP analysis (`fit_shp`) is least-squares over the mesh -> does NOT scale**
   past ~L=32 (basis matrix: L=48~8GB, L=72~22GB). High L needs the grid path below.
 
-## NEXT TASK (in progress): grid-quadrature high-L_max SH analysis + L_max criterion
-User decisions: do it AFTER props() (done); KEEP the `sh_basis` 'bosh' convention
-(so `.shp3` / existing coefficients stay compatible) -> use quadrature, not pyshtools.
+## DONE: grid-quadrature high-L_max SH analysis + L_max criterion (commit pending)
+Kept the `sh_basis` 'bosh' convention (so `.shp3` stays compatible). New functions
+in `cmcf_spherical_parameterization.py`:
+- `resample_to_grid(mesh, basis)` -- barycentric-interpolate x,y,z onto the basis
+  Gauss grid (KDTree on face-centroid directions -> cone/barycentric pick + interp).
+- `_quadrature_basis(L_max, gdim)` -- builds an `sh_basis` with ONLY the grid + `Y`
+  (its `__init__` eagerly builds 6 huge derivative arrays, ~5.4 GB at L=72 -- skip).
+- `shp_analysis_grid(mesh, L_max, gdim=None, method='auto')` -> `(shp, rms_rel)`.
+  `method`: 'diag' (`c = sum(w f Y)/sum(w Y^2)`, fast), 'galerkin' (`(Y^T W Y)c=Y^T W f`,
+  robust), 'auto' (diag, fall back to galerkin if grid round-trip > 5%).
+- `recommend_lmax(mesh, L_max_max=48, rms_target=0.005)` -> `(rec, rms_curve, E)`:
+  one grid fit, then incrementally truncate to read RMS(L) for all L (cheap);
+  recommend smallest L with grid-RMS <= target. Mesh-adaptive; discriminates
+  complexity. `E` = per-degree power spectrum.
 
-Plan:
-1. `resample_to_grid(param_mesh, basis)`: barycentric-interpolate `x,y,z` onto the
-   basis grid (`basis.p`, `basis.t`; `gdim x gdim` points). Point location: KDTree on
-   the param sphere vertices, then test/interp in incident faces (spherical
-   barycentric). Returns f_grid (Ngrid x 3).
-2. Quadrature projection that INVERTS the synthesis (`shp_surface.update` does
-   `f = sum_lk c_lk Y_lk`): if the basis is orthogonal under the quadrature inner
-   product `<a,b>=sum_g w_g a_g b_g`, then
-      `c_lk = (sum_g w_g f_g Y_lk_g) / (sum_g w_g Y_lk_g^2)`  (per x/y/z channel).
-   Use `basis.Y` reshaped `(Ngrid, Ncoeff)` and `basis.w` (Ngrid). Matrix-vector,
-   ~1GB at L=72, no SVD. **VALIDATE round-trip** (synthesize known c -> grid ->
-   analyze -> recover c within tol). If off-diagonal coupling is non-negligible,
-   fall back to grid least-squares (pinv of the (Ngrid x Ncoeff) basis). Use
-   `gdim >= ~2*L_max` for accuracy.
-3. `complexity -> L_max` criterion: from the SH power spectrum
-   `E_l = sqrt(sum_{m,ch} c_{l,m,ch}^2)`, recommend the smallest `L` where
-   cumulative energy >= ~99.5% (or where `E_l` drops below the recon-error floor).
-4. Validate on `1dpx` at L=16/32/48/72: RMS should keep dropping; report
-   recommended `L_max`.
-`sh_basis` facts: `sh_basis(L_max, gdim)` builds Gauss-quadrature grid; `.p/.t`
-meshgrid `(gdim,gdim)`; `.w` flattened weights `(gdim^2,)`; `.Y` `(gdim,gdim,(L+1)^2)`;
-`ylk_bosh(L,K,phi,theta)`. Default `gdim=30`.
+**CRITICAL GOTCHA (cost an hour):** `basis.w` is the BARE Gauss product weight for
+`int dtheta dphi`; the round-sphere measure is `sin(theta) dtheta dphi` (the
+`sin(theta)` lives in `SSn` in `shp_surface.update_full`, NOT in `.w`). The
+quadrature MUST use `w = basis.w * sin(basis.t)` or the basis isn't orthogonal and
+the diagonal projection aliases (odd-degree energies blow up, RMS(L) increases).
+Galerkin hides this (any positive weights still give a valid weighted LS) -- which
+is why `shp_analysis_grid` 'auto' looked fine while a diag-only path was garbage.
+
+Validation (params at target_verts~2000; grid `gdim=2*L+2`):
+- `1dpx`   grid-RMS  L=16 .51% / 32 .19% / 48 .11% / 72 .06%  (L=48 ~10s, L=72 ~64s)
+- `mushroom_repaired_03`            L=16 .63% / 32 .34% / 48 .23% / 72 .14%
+- monotone RMS drop; clean decaying spectra. recommend_lmax @0.5%: 1dpx L=15,
+  mushroom L=23 (its thin stalk is genuinely higher-frequency -> needs more band).
+- L=72 cost is dominated by the `Y` build (5329 `lpmv` calls), not the solve.
+
+## NEXT (grid-quadrature follow-ups)
+- WIRE INTO PIPELINE/BATCH: let `fit_shp`/`parameterize_to_sphere`/the batch
+  notebook use `shp_analysis_grid` when `L_max` is high (e.g. > ~24) and emit the
+  `recommend_lmax` value per mesh in the summary table + as a `.shp3` sidecar.
+- For real protein detail, raise input `target_verts` (14-15k) so the mesh, not L,
+  is the limiter; then recommend_lmax will climb.
+- Optional: speed the high-L `Y` build (vectorize/cache `lpmv` across L) for cloud.
 
 ## Other backlog
 - Optional: route `too_complex` shapes to the old patch-based pipeline (user
