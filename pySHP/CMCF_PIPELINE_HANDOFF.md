@@ -30,8 +30,16 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
 - `5cbfc51` equalizer untangle-from-folded + aniso gate + fast untangler + demo fix
 - `ccc300f` gated escalation (fold-count+kappa) + Tier-1 local fold surgery + quality classes
 - `0c51a73` props() mean-curvature vectorized (~130x faster, exact on consistent winding)
+- `19867e0` this handoff doc
+- `2f0cd62` grid-quadrature high-L_max SH analysis (scales to L=72) + recommend_lmax
+- `11d00d0` analyze_shp (LS<=24 / grid>24) -> L_max=60 everywhere + Tutte Stage-1b fallback
+- `59faf32` batch TARGET_VERTS=7000 + CLI smoke test (run_parameterization_test.py)
+- `b46d6e9` robust_foldover_count (exact fallback) + honest Stage-2c classification  <-- HEAD
 - Git identity is NOT configured; commit with one-off:
   `git -c user.email="khaledkhairy@yahoo.com" -c user.name="Khaled Khairy" commit ...`
+- NOTE: the other files shown modified in `git status` (tiered_spherical_parameterization.py,
+  *_diagnostic.txt, *_tier_by_tier_05.ipynb, cmcf_batch_outputs/) are PRE-EXISTING and
+  unrelated to this work -- leave them alone.
 
 ## Pipeline stages (`parameterize_to_sphere`)
 0. **preprocess** — repair + keep-largest + curvature-adaptive remesh.
