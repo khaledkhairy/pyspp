@@ -325,8 +325,61 @@ def _spherical_tangential_smooth(S, F, fixed_mask=None, n_iter=20,
     return S
 
 
+def _avg_matrix(F, nv):
+    """Row-normalised vertex adjacency (for fast vectorised neighbour averaging)."""
+    rows, cols, seen = [], [], set()
+    for f in F:
+        for a, b in ((int(f[0]), int(f[1])), (int(f[1]), int(f[2])),
+                     (int(f[2]), int(f[0]))):
+            e = (a, b) if a < b else (b, a)
+            if e in seen:
+                continue
+            seen.add(e)
+            rows += [a, b]
+            cols += [b, a]
+    rows = np.asarray(rows, int)
+    cols = np.asarray(cols, int)
+    deg = np.bincount(rows, minlength=nv).astype(float)
+    deg[deg == 0] = 1.0
+    from scipy.sparse import csr_matrix as _csr
+    return _csr((1.0 / deg[rows], (rows, cols)), shape=(nv, nv))
+
+
+def _untangle_spherical(S, F, max_iter=400, fixed_mask=None, check_every=10,
+                        verbose=False):
+    """Strong fold remover: iterated tangential (neighbour-average) smoothing on
+    the sphere, vectorised as a sparse mat-vec so hundreds of sweeps are cheap.
+
+    Returns the least-folded iterate ``(S, n_folds)``. The map may become very
+    non-uniform (that is fine -- area is restored afterwards by the equalizer);
+    the point is to reach a *bijective* (fold-free) configuration.
+    """
+    S = S / np.maximum(np.linalg.norm(S, axis=1, keepdims=True), 1e-15)
+    nv = len(S)
+    f0 = sphere_foldover_count(S, F)
+    if f0 == 0:
+        return S, 0
+    W = _avg_matrix(np.asarray(F, int), nv)
+    best_S, best_f = S.copy(), f0
+    for it in range(int(max_iter)):
+        Sn = W @ S
+        if fixed_mask is not None:
+            Sn[fixed_mask] = S[fixed_mask]
+        Sn = Sn / np.maximum(np.linalg.norm(Sn, axis=1, keepdims=True), 1e-15)
+        S = Sn
+        if (it + 1) % check_every == 0:
+            f = sphere_foldover_count(S, F)
+            if f < best_f:
+                best_f, best_S = f, S.copy()
+            if f == 0:
+                break
+    if verbose:
+        print(f"  untangle: folds {f0} -> {best_f} (tangential smoothing)")
+    return best_S, best_f
+
+
 def cmcf_sphere_map(mesh, n_iter=120, step_factor=1.0, tol=1e-5,
-                    untangle_iter=30, snapshot_every=0, verbose=True):
+                    untangle_iter=400, snapshot_every=0, verbose=True):
     """Stage 1: map a (preprocessed) genus-0 mesh to the unit sphere via cMCF.
 
     Sets ``mesh.t`` / ``mesh.p`` (KK colatitude/azimuth). Assumes ``mesh.F`` has
@@ -345,10 +398,10 @@ def cmcf_sphere_map(mesh, n_iter=120, step_factor=1.0, tol=1e-5,
     nfold = sphere_foldover_count(S, F)
     if nfold > 0 and untangle_iter > 0:
         if verbose:
-            print(f"  cMCF left {nfold} folds; tangential untangle "
-                  f"x{untangle_iter}")
-        S = _spherical_tangential_smooth(S, F, n_iter=untangle_iter,
-                                         verbose=verbose)
+            print(f"  cMCF left {nfold} folds; adaptive tangential untangle "
+                  f"(<= {untangle_iter})")
+        S, nfold = _untangle_spherical(S, F, max_iter=untangle_iter,
+                                       verbose=verbose)
     info['foldovers_after_untangle'] = sphere_foldover_count(S, F)
 
     _set_tp_from_sphere(mesh, S)
@@ -600,6 +653,7 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
     mu = float(mu_frac) * float(np.mean(Ao)) ** 2
 
     cov0 = float(np.std(q) / max(np.mean(q), 1e-20))
+    nfold0 = int(np.sum(q <= 0))
     n_acc = 0
     # Adam per-vertex moments (adaptive steps: the concentrated stalk has huge
     # gradients, the cap tiny ones -- per-coordinate scaling lets both progress).
@@ -607,9 +661,14 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
     m2 = np.zeros((nv, 3))
     b1, b2, adam_eps = 0.9, 0.999, 1e-12
     cov_prev = cov0
-    S_best, cov_best = S.copy(), cov0     # Adam can oscillate -> keep the best
+    cur_nfold = nfold0
+    # Keep the best iterate by (n_foldovers, area_cov). Because steps are only
+    # rejected if they INCREASE folds, the barrier gradient also UNtangles a
+    # folded cMCF start -- so this doubles as a fold remover for hard shapes.
+    best_key = (nfold0, cov0)
+    S_best = S.copy()
     for it in range(int(n_iter)):
-        qpos = np.maximum(q, 1e-12)
+        qpos = np.maximum(q, 1e-9)
         dEdq = 2.0 * (q - Ao) - mu / qpos
         Si, Sj, Sk = S[Fi], S[Fj], S[Fk]
         g = np.zeros((nv, 3))
@@ -638,7 +697,7 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
             ss = float(np.sqrt(np.mean(gs * gs))) + 1e-20
             g = g + lambda_shape * (sa / ss) * gs   # relative-weighted blend
         g -= np.einsum('ij,ij->i', g, S)[:, None] * S      # tangent projection
-        if float(np.max(np.linalg.norm(g, axis=1))) < tol:
+        if cur_nfold == 0 and float(np.max(np.linalg.norm(g, axis=1))) < tol:
             break
         m1 = b1 * m1 + (1.0 - b1) * g
         m2 = b2 * m2 + (1.0 - b2) * (g * g)
@@ -648,39 +707,46 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
         d -= np.einsum('ij,ij->i', d, S)[:, None] * S
         dmax = float(np.max(np.linalg.norm(d, axis=1)))
         eta = float(step) / (dmax + 1e-12)                 # cap max vertex move
-        # Feasibility backtracking: keep every triangle positively oriented.
+        # Backtracking line search: accept a step only if it does NOT increase
+        # the foldover count -> a fold-free map stays fold-free, and a folded
+        # cMCF start gets progressively untangled (the barrier inflates folds).
+        accepted = False
         for _ls in range(25):
             Sn = S - eta * d
             Sn = Sn / np.maximum(np.linalg.norm(Sn, axis=1, keepdims=True), 1e-15)
             qn = _tri_q(Sn, F)
-            if np.all(qn > 0):
-                S, q, n_acc = Sn, qn, n_acc + 1
+            nfn = int(np.sum(qn <= 0))
+            if nfn <= cur_nfold:
+                S, q, cur_nfold, n_acc = Sn, qn, nfn, n_acc + 1
+                accepted = True
                 break
             eta *= 0.5
-        else:
+        if not accepted:
             break
         cov = float(np.std(q) / max(np.mean(q), 1e-20))
-        if cov < cov_best:                 # remember the most uniform iterate
-            cov_best, S_best = cov, S.copy()
-        # Early stop when uniformity plateaus (checked on a 50-iter window).
+        key = (cur_nfold, cov)             # prefer fewer folds, then lower cov
+        if key < best_key:
+            best_key, S_best = key, S.copy()
+        # Early stop only once fold-free AND uniformity has plateaued.
         if (it + 1) % 50 == 0:
             if verbose:
-                print(f"  equalize it {it + 1:4d}: area_cov={cov:.3f} "
-                      f"(best {cov_best:.3f}), "
-                      f"min/mean q={q.min() / max(q.mean(), 1e-20):.2e}")
-            if cov_best > (1.0 - plateau_tol) * cov_prev:
+                print(f"  equalize it {it + 1:4d}: folds={cur_nfold} "
+                      f"area_cov={cov:.3f} (best folds={best_key[0]} "
+                      f"cov={best_key[1]:.3f})")
+            if best_key[0] == 0 and best_key[1] > (1.0 - plateau_tol) * cov_prev:
                 break
-            cov_prev = cov_best
+            cov_prev = best_key[1]
 
     S = S_best                              # return the best (not the last) map
     q = _tri_q(S, F)
     cov1 = float(np.std(q) / max(np.mean(q), 1e-20))
     _set_tp_from_sphere(mesh, S)
     info = {'area_cov_before': cov0, 'area_cov_after': cov1,
-            'n_accepted': n_acc, 'foldovers': int(np.sum(q <= 0))}
+            'foldovers_before': nfold0, 'n_accepted': n_acc,
+            'foldovers': int(np.sum(q <= 0))}
     if verbose:
-        print(f"  equalize_areas: area_cov {cov0:.3f} -> {cov1:.3f} "
-              f"({n_acc} steps), foldovers={info['foldovers']}")
+        print(f"  equalize_areas: area_cov {cov0:.3f} -> {cov1:.3f}, "
+              f"folds {nfold0} -> {info['foldovers']} ({n_acc} steps)")
     return mesh, info
 
 
@@ -783,7 +849,7 @@ def _refine_long_spherical_edges(X, F, S, split_factor=1.7, labels=None):
     return Xn, Fn, Sn, Ln, len(Xn) - len(X)
 
 
-def _parameterize_and_equalize(m, cmcf_iter=120, cmcf_step=1.0, untangle_iter=30,
+def _parameterize_and_equalize(m, cmcf_iter=120, cmcf_step=1.0, untangle_iter=400,
                                center=True, area_blend=1.0, area_exponent=2.0,
                                area_n_iter=1200, lambda_shape=0.3, verbose=False):
     """cMCF -> Mobius centre -> area equalize, in place; returns ``(m, eq_info)``."""
@@ -824,6 +890,13 @@ def anisotropic_rounds(m, n_rounds=2, split_factor=1.7, area_blend=1.0,
     eq_kw = dict(area_blend=area_blend, area_exponent=area_exponent,
                  n_iter=area_n_iter, lambda_shape=lambda_shape)
     history = [_anisotropic_diag(m, 0, verbose=verbose)]
+    if history[0]['n_foldovers'] > 0:
+        # Refining a folded map splits its spurious long edges -> vertex blow-up
+        # with no untangling. Require a bijective map before anisotropic refine.
+        if verbose:
+            print(f"  [aniso] map still has {history[0]['n_foldovers']} "
+                  "foldovers; skipping anisotropic refinement (would amplify)")
+        return m, history
     for r in range(1, int(n_rounds) + 1):
         S = _sphere_from_tp(m)
         Xn, Fn, Sn, Ln, n_new = _refine_long_spherical_edges(
@@ -1287,7 +1360,7 @@ def canonicalize_shp(mesh, L_max=16, oversample=40, scale_mode='ellipsoid',
 # --------------------------------------------------------------------------- #
 def parameterize_to_sphere(
         mesh, target_verts=2000, curvature_strength=2.0, do_preprocess=True,
-        cmcf_iter=120, cmcf_step=1.0, cmcf_tol=1e-5, untangle_iter=30,
+        cmcf_iter=120, cmcf_step=1.0, cmcf_tol=1e-5, untangle_iter=400,
         area_blend=1.0, area_exponent=2.0, area_n_iter=1200, lambda_shape=0.3,
         aniso_rounds=0, aniso_split_factor=1.7,
         allow_cage_fallback=True, n_cage=250,
