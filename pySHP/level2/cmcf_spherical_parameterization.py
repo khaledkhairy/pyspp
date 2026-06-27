@@ -555,7 +555,7 @@ def _tri_q(S, F):
 
 def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
                    step=0.04, mu_frac=2e-2, tol=1e-7, plateau_tol=2e-3,
-                   verbose=True):
+                   lambda_shape=0.0, verbose=True):
     """De-concentrate / equalize spherical areas with an interior-point method.
 
     Minimises ``E(S) = sum_f (q_f - Ao_f)^2 - mu * sum_f log(q_f)`` over the
@@ -616,6 +616,27 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
         np.add.at(g, Fi, dEdq[:, None] * np.cross(Sj, Sk))
         np.add.at(g, Fj, dEdq[:, None] * np.cross(Sk, Si))
         np.add.at(g, Fk, dEdq[:, None] * np.cross(Si, Sj))
+        if lambda_shape > 0.0:
+            # Shape regularizer: penalise per-face edge-length variance so the
+            # spherical triangles become regular (equilateral) -> isotropic,
+            # low-shear sampling, at the cost of a little area uniformity. The
+            # 3-D triangles are fixed, so this only redistributes the sphere
+            # vertices toward a more regular triangulation.
+            vij, vjk, vki = Si - Sj, Sj - Sk, Sk - Si
+            lij = np.maximum(np.linalg.norm(vij, axis=1), 1e-12)
+            ljk = np.maximum(np.linalg.norm(vjk, axis=1), 1e-12)
+            lki = np.maximum(np.linalg.norm(vki, axis=1), 1e-12)
+            ebar = (lij + ljk + lki) / 3.0
+            cij = 2.0 * (lij - ebar) / lij
+            cjk = 2.0 * (ljk - ebar) / ljk
+            cki = 2.0 * (lki - ebar) / lki
+            gs = np.zeros((nv, 3))
+            np.add.at(gs, Fi, cij[:, None] * vij - cki[:, None] * vki)
+            np.add.at(gs, Fj, -cij[:, None] * vij + cjk[:, None] * vjk)
+            np.add.at(gs, Fk, -cjk[:, None] * vjk + cki[:, None] * vki)
+            sa = float(np.sqrt(np.mean(g * g))) + 1e-20
+            ss = float(np.sqrt(np.mean(gs * gs))) + 1e-20
+            g = g + lambda_shape * (sa / ss) * gs   # relative-weighted blend
         g -= np.einsum('ij,ij->i', g, S)[:, None] * S      # tangent projection
         if float(np.max(np.linalg.norm(g, axis=1))) < tol:
             break
@@ -661,6 +682,191 @@ def equalize_areas(mesh, area_blend=1.0, area_exponent=2.0, n_iter=1200,
         print(f"  equalize_areas: area_cov {cov0:.3f} -> {cov1:.3f} "
               f"({n_acc} steps), foldovers={info['foldovers']}")
     return mesh, info
+
+
+# --------------------------------------------------------------------------- #
+# Stretch-aligned anisotropic refinement (the "pre-compressed triangle"
+# look-ahead): refine 3-D edges whose spherical IMAGE is long.
+# --------------------------------------------------------------------------- #
+def _refine_long_spherical_edges(X, F, S, split_factor=1.7, labels=None):
+    """Split the 3-D edges whose *spherical* image is long (red-green, manifold).
+
+    After a parameterization, an edge that is long on the sphere is one the map
+    *stretched* -- i.e. it lies along the high-stretch direction and is sparsely
+    sampled there. Bisecting it (3-D midpoint) inserts a vertex along that
+    direction, so the 3-D triangles become "pre-compressed" along the stretch
+    axis: on the next parameterization the map spreads those closely-spaced
+    vertices out, yielding more regular (less sheared / sliver) spherical
+    triangles and denser sampling where it was sparse. This is exactly the
+    stretch-driven look-ahead, using the spherical edge length as the (cheap,
+    direction-aware) stretch indicator -- no metric tensor required.
+
+    Shared edges use a shared midpoint, and each triangle is split by how many
+    of its edges are marked (1 -> 2, 2 -> 3, 3 -> 4 sub-triangles), so the
+    result is watertight (no T-junctions). New vertices also get a **sphere**
+    position (renormalised edge midpoint of ``S``) so the refined mesh can be
+    re-parameterized from a warm (still-bijective) start. Returns
+    ``(Xn, Fn, Sn, labels_n, n_new)``.
+    """
+    X = np.asarray(X, float)
+    F = np.asarray(F, int)
+    S = np.asarray(S, float)
+    labels = np.asarray(labels) if labels is not None else None
+
+    elen = {}
+    for f in F:
+        for a, b in ((int(f[0]), int(f[1])), (int(f[1]), int(f[2])),
+                     (int(f[2]), int(f[0]))):
+            k = (a, b) if a < b else (b, a)
+            if k not in elen:
+                elen[k] = float(np.linalg.norm(S[k[0]] - S[k[1]]))
+    if not elen:
+        return X, F, S, labels, 0
+    thr = float(split_factor) * float(np.median(list(elen.values())))
+    mark = {k for k, v in elen.items() if v > thr}
+    if not mark:
+        return X, F, S, labels, 0
+
+    Xn = [x for x in X]
+    Sn = [s for s in S]
+    mid = {}
+
+    def gm(a, b):
+        k = (a, b) if a < b else (b, a)
+        m = mid.get(k)
+        if m is None:
+            m = len(Xn)
+            Xn.append(0.5 * (X[a] + X[b]))
+            sm = S[a] + S[b]
+            Sn.append(sm / max(np.linalg.norm(sm), 1e-15))
+            mid[k] = m
+        return m
+
+    Fn, Ln = [], ([] if labels is not None else None)
+    for fi in range(len(F)):
+        v0, v1, v2 = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
+        m01 = (min(v0, v1), max(v0, v1)) in mark
+        m12 = (min(v1, v2), max(v1, v2)) in mark
+        m20 = (min(v2, v0), max(v2, v0)) in mark
+        n = int(m01) + int(m12) + int(m20)
+        if n == 0:
+            subs = [(v0, v1, v2)]
+        elif n == 3:
+            a, b, c = gm(v0, v1), gm(v1, v2), gm(v2, v0)
+            subs = [(v0, a, c), (a, v1, b), (c, b, v2), (a, b, c)]
+        elif n == 1:
+            if m01:
+                m = gm(v0, v1); subs = [(v0, m, v2), (m, v1, v2)]
+            elif m12:
+                m = gm(v1, v2); subs = [(v1, m, v0), (m, v2, v0)]
+            else:
+                m = gm(v2, v0); subs = [(v2, m, v1), (m, v0, v1)]
+        else:  # n == 2
+            if m01 and m12:
+                a, b = gm(v0, v1), gm(v1, v2)
+                subs = [(a, v1, b), (v0, a, b), (v0, b, v2)]
+            elif m12 and m20:
+                a, b = gm(v1, v2), gm(v2, v0)
+                subs = [(a, v2, b), (v1, a, b), (v1, b, v0)]
+            else:
+                a, b = gm(v2, v0), gm(v0, v1)
+                subs = [(a, v0, b), (v2, a, b), (v2, b, v1)]
+        for s in subs:
+            Fn.append(s)
+            if Ln is not None:
+                Ln.append(labels[fi])
+
+    Xn = np.asarray(Xn)
+    Sn = np.asarray(Sn)
+    Fn = np.asarray(Fn, dtype=int)
+    Ln = np.asarray(Ln) if Ln is not None else None
+    return Xn, Fn, Sn, Ln, len(Xn) - len(X)
+
+
+def _parameterize_and_equalize(m, cmcf_iter=120, cmcf_step=1.0, untangle_iter=30,
+                               center=True, area_blend=1.0, area_exponent=2.0,
+                               area_n_iter=1200, lambda_shape=0.3, verbose=False):
+    """cMCF -> Mobius centre -> area equalize, in place; returns ``(m, eq_info)``."""
+    m, _ = cmcf_sphere_map(m, n_iter=cmcf_iter, step_factor=cmcf_step,
+                           untangle_iter=untangle_iter, verbose=verbose)
+    if center:
+        m = mobius_center(m, verbose=verbose)
+    m, eq_info = equalize_areas(m, area_blend=area_blend,
+                                area_exponent=area_exponent, n_iter=area_n_iter,
+                                lambda_shape=lambda_shape, verbose=verbose)
+    return m, eq_info
+
+
+def _anisotropic_diag(mesh, rnd, n_new=0, verbose=True):
+    d = sphere_diagnostics(mesh, verbose=False)
+    rec = {'round': rnd, 'n_verts': len(mesh.X), 'n_faces': len(mesh.F),
+           'n_new_verts': n_new, 'max_shear': d['max_shear'],
+           'min_quality': d['min_quality'], 'mean_quality': d['mean_quality'],
+           'area_cov': d['area_cov'], 'n_foldovers': d['n_foldovers']}
+    if verbose:
+        print(f"  [aniso r{rnd}] {rec['n_verts']}v: "
+              f"max_shear={rec['max_shear']:.2f} min_q={rec['min_quality']:.3f} "
+              f"mean_q={rec['mean_quality']:.3f} area_cov={rec['area_cov']:.2f} "
+              f"folds={rec['n_foldovers']}")
+    return rec
+
+
+def anisotropic_rounds(m, n_rounds=2, split_factor=1.7, area_blend=1.0,
+                       area_exponent=2.0, area_n_iter=1200, lambda_shape=0.3,
+                       verbose=True):
+    """Run warm-start anisotropic refinement rounds on an *already*-parameterized
+    mesh ``m`` (with ``.t`` / ``.p``). Returns ``(m, history)``.
+
+    Each round: split the 3-D edges the map stretched (long on the sphere) ->
+    keep the bijective map for old vertices, place split midpoints on the sphere
+    -> recentre + re-equalize. No cMCF re-run (warm, fold-free, fast).
+    """
+    eq_kw = dict(area_blend=area_blend, area_exponent=area_exponent,
+                 n_iter=area_n_iter, lambda_shape=lambda_shape)
+    history = [_anisotropic_diag(m, 0, verbose=verbose)]
+    for r in range(1, int(n_rounds) + 1):
+        S = _sphere_from_tp(m)
+        Xn, Fn, Sn, Ln, n_new = _refine_long_spherical_edges(
+            m.X, m.F, S, split_factor=split_factor,
+            labels=getattr(m, 'face_labels', None))
+        if n_new == 0:
+            if verbose:
+                print(f"  [aniso r{r}] no long spherical edges; stopping")
+            break
+        m = surface_mesh(Xn, Fn)
+        if Ln is not None:
+            m.face_labels = Ln
+        _set_tp_from_sphere(m, Sn)
+        m = mobius_center(m, verbose=False)
+        m, _ = equalize_areas(m, verbose=False, **eq_kw)
+        if verbose:
+            print(f"  [aniso r{r}] refined +{n_new} verts ({len(Fn)} faces); "
+                  "re-equalized (warm start)")
+        history.append(_anisotropic_diag(m, r, n_new, verbose=verbose))
+    return m, history
+
+
+def anisotropic_refine_parameterization(m_pre, n_rounds=2, split_factor=1.7,
+                                        verbose=True, **pkw):
+    """Full stretch-aligned anisotropic look-ahead from a preprocessed mesh:
+    parameterize (cMCF -> centre -> equalize), then :func:`anisotropic_rounds`.
+
+    ``pkw`` forwarded to :func:`_parameterize_and_equalize` (cmcf_iter,
+    area_blend, area_n_iter, lambda_shape, ...). Returns ``(m_param, history)``.
+    """
+    labels = (np.asarray(m_pre.face_labels).copy()
+              if getattr(m_pre, 'face_labels', None) is not None else None)
+    m = surface_mesh(np.asarray(m_pre.X, float).copy(),
+                     np.asarray(m_pre.F, int).copy())
+    if labels is not None:
+        m.face_labels = labels.copy()
+    m, _ = _parameterize_and_equalize(m, verbose=verbose, **pkw)
+    return anisotropic_rounds(
+        m, n_rounds=n_rounds, split_factor=split_factor,
+        area_blend=pkw.get('area_blend', 1.0),
+        area_exponent=pkw.get('area_exponent', 2.0),
+        area_n_iter=pkw.get('area_n_iter', 1200),
+        lambda_shape=pkw.get('lambda_shape', 0.3), verbose=verbose)
 
 
 # --------------------------------------------------------------------------- #
@@ -963,7 +1169,8 @@ def fit_shp(mesh, L_max=16, oversample=40, max_subdiv=3, verbose=True):
 def parameterize_to_sphere(
         mesh, target_verts=2000, curvature_strength=2.0, do_preprocess=True,
         cmcf_iter=120, cmcf_step=1.0, cmcf_tol=1e-5, untangle_iter=30,
-        area_blend=1.0, area_exponent=2.0, area_n_iter=1200,
+        area_blend=1.0, area_exponent=2.0, area_n_iter=1200, lambda_shape=0.3,
+        aniso_rounds=0, aniso_split_factor=1.7,
         allow_cage_fallback=True, n_cage=250,
         center=True, fit_shp_L_max=16, shp_oversample=40,
         snapshot_every=0, verbose=True):
@@ -1056,11 +1263,27 @@ def parameterize_to_sphere(
         print("=" * 60)
     m, eq_info = equalize_areas(
         m, area_blend=area_blend, area_exponent=area_exponent,
-        n_iter=area_n_iter, verbose=verbose)
+        n_iter=area_n_iter, lambda_shape=lambda_shape, verbose=verbose)
     result['equalize_info'] = eq_info
     diag2 = sphere_diagnostics(m, verbose=verbose)
     result['stage2_diag'] = diag2
     result['mesh'] = m
+
+    # ---- Stage 2b: stretch-aligned anisotropic refinement (look-ahead) --- #
+    if aniso_rounds > 0:
+        if verbose:
+            print("\n" + "=" * 60)
+            print(f"Stage 2b: anisotropic refinement ({aniso_rounds} rounds, "
+                  f"split_factor={aniso_split_factor})")
+            print("=" * 60)
+        m, aniso_hist = anisotropic_rounds(
+            m, n_rounds=aniso_rounds, split_factor=aniso_split_factor,
+            area_blend=area_blend, area_exponent=area_exponent,
+            area_n_iter=area_n_iter, lambda_shape=lambda_shape, verbose=verbose)
+        result['aniso_history'] = aniso_hist
+        diag2 = sphere_diagnostics(m, verbose=verbose)
+        result['stage2_diag'] = diag2
+        result['mesh'] = m
 
     # ---- Stage 3: SHP fit (upsampled to match L_max) --------------------- #
     if fit_shp_L_max:
