@@ -152,6 +152,52 @@ def sphere_foldover_count(S, F):
     return min(n_pos, n_neg)
 
 
+def _exact_orient_sign(a, b, c):
+    """Exact sign of the orientation determinant ``a . (b x c)`` via rationals
+    (float64 inputs are exact rationals, so this is the true sign)."""
+    from fractions import Fraction
+    A = [Fraction(float(x)) for x in a]
+    B = [Fraction(float(x)) for x in b]
+    C = [Fraction(float(x)) for x in c]
+    d = (A[0] * (B[1] * C[2] - B[2] * C[1])
+         + A[1] * (B[2] * C[0] - B[0] * C[2])
+         + A[2] * (B[0] * C[1] - B[1] * C[0]))
+    return 0 if d == 0 else (1 if d > 0 else -1)
+
+
+def robust_foldover_count(S, F, return_degenerate=False):
+    """**Honest** foldover count: float64 with an exact (rational) fallback for
+    near-degenerate faces.
+
+    The naive float64 triple product suffers catastrophic cancellation on thin /
+    crushed spherical triangles, so it both *over*-counts (phantom folds on
+    near-flat faces) and *under*-counts (misses true folds) -- e.g. a crushed
+    Tutte map reads 41 folds in float64 but 5 exactly, while an equalized map can
+    read 39 vs 45. We compute the determinant in float64 with an a-priori error
+    bound (permanent * machine-eps); faces within the bound are re-evaluated
+    exactly with rationals. ``return_degenerate`` also reports the number of
+    exactly-degenerate (collapsed) faces -- the genuine float64 ceiling.
+    """
+    a, b, c = S[F[:, 0]], S[F[:, 1]], S[F[:, 2]]
+    bx = b[:, 1] * c[:, 2] - b[:, 2] * c[:, 1]
+    by = b[:, 2] * c[:, 0] - b[:, 0] * c[:, 2]
+    bz = b[:, 0] * c[:, 1] - b[:, 1] * c[:, 0]
+    q = a[:, 0] * bx + a[:, 1] * by + a[:, 2] * bz
+    perm = (np.abs(a[:, 0]) * (np.abs(b[:, 1] * c[:, 2]) + np.abs(b[:, 2] * c[:, 1]))
+            + np.abs(a[:, 1]) * (np.abs(b[:, 2] * c[:, 0]) + np.abs(b[:, 0] * c[:, 2]))
+            + np.abs(a[:, 2]) * (np.abs(b[:, 0] * c[:, 1]) + np.abs(b[:, 1] * c[:, 0])))
+    errb = 16.0 * np.finfo(float).eps * perm
+    signs = np.sign(q).astype(np.int8)
+    for i in np.where(np.abs(q) <= errb)[0]:
+        signs[i] = _exact_orient_sign(S[F[i, 0]], S[F[i, 1]], S[F[i, 2]])
+    n_pos = int(np.sum(signs > 0))
+    n_neg = int(np.sum(signs < 0))
+    nf = min(n_pos, n_neg)
+    if return_degenerate:
+        return nf, int(np.sum(signs == 0))
+    return nf
+
+
 def _sphere_tri_areas(S, F):
     """Per-face triangle area on the unit sphere (flat proxy 0.5*|triple|)."""
     v0, v1, v2 = S[F[:, 0]], S[F[:, 1]], S[F[:, 2]]
@@ -1818,7 +1864,10 @@ def parameterize_to_sphere(
     #                         a hydra folds at every resolution; conformal SHP
     #                         cannot embed it, so we do NOT burn compute on it).
     from .tiered_spherical_parameterization import INTRACTABLE_KAPPA
-    nf = int(diag2['n_foldovers'])
+    # Use the ROBUST (exact-fallback) foldover count for classification -- the
+    # float64 count both over- and under-reports on near-degenerate faces.
+    nf, n_degen = robust_foldover_count(_sphere_from_tp(m), np.asarray(m.F, int),
+                                        return_degenerate=True)
     n_faces = max(len(m.F), 1)
     kappa = float(result.get('complexity', {}).get('kappa', 0.0))
     surgery_max = max(50, int(0.02 * n_faces))
@@ -1835,7 +1884,8 @@ def parameterize_to_sphere(
             diag2 = sphere_diagnostics(m, verbose=verbose)
             result['stage2_diag'] = diag2
             result['mesh'] = m
-            nf = int(diag2['n_foldovers'])
+            nf, n_degen = robust_foldover_count(
+                _sphere_from_tp(m), np.asarray(m.F, int), return_degenerate=True)
         if nf == 0:
             quality = 'bijective'
         elif nf <= near_tol:
@@ -1843,10 +1893,11 @@ def parameterize_to_sphere(
         else:
             quality = 'too_complex'
         if verbose:
-            print(f"  escalation: quality={quality} ({nf} folds, "
-                  f"kappa={kappa:.2f})")
+            print(f"  escalation: quality={quality} ({nf} robust folds, "
+                  f"{n_degen} degenerate, kappa={kappa:.2f})")
     result['quality'] = quality
     result['n_foldovers'] = nf
+    result['n_degenerate'] = n_degen
 
     # ---- Stage 2b: stretch-aligned anisotropic refinement (look-ahead) --- #
     # Only on a bijective map (refining a folded map amplifies it).

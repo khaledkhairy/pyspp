@@ -138,11 +138,36 @@ IMPORTANT empirical finding: higher resolution makes hydra WORSE (Tutte folds 2k
 So even a correct progressive may not fully clear hydra; multi-chart or extended
 precision may ultimately be needed for the most extreme (Q~0.007) shapes.
 
-## NEXT
-- Progressive embedding, done properly (above), OR accept hydra-class as flagged.
-- `recommend_lmax` per-mesh value into the batch summary + `.shp3` sidecar (the
-  user has fixed L=60 for now, so lower priority).
-- Optional: speed the high-L `Y` build (vectorize/cache `lpmv` across L) for cloud.
+## DONE: robust foldover predicate (honest metrics) + KEY hydra diagnosis
+- `robust_foldover_count(S, F, return_degenerate=)` -- float64 determinant with an
+  a-priori error bound (permanent * eps) + EXACT rational fallback for the
+  near-degenerate faces. The float64 test is unreliable BOTH ways: hydra's crushed
+  Tutte map reads 41 folds in float64 but **5 exactly** (+2 collapsed faces); an
+  equalized map can read 39 vs **45**. Wired into the Stage-2c quality
+  classification (`result['n_foldovers']` is now the honest count;
+  `result['n_degenerate']` = collapsed faces). Clean shapes unaffected (still 0).
+- EXHAUSTIVE float64 untangling study (all REVERTED, none reach true 0 on hydra):
+  Tutte (5 robust), progressive centroid/kernel, hierarchical (~46-100),
+  local_fold_surgery (107->46 plateau), global equalize (->100), targeted
+  fold-only gradient, hinge "push every face to +margin" (1dpx 3->3, hydra 45->45).
+  CONCLUSION: residual folds are genuinely stuck (mesh untangling is NP-hard in
+  general) AND the worst sit in sub-float64-precision crushed regions. No float64
+  trick closes them.
+
+## NEXT: the guaranteed solver (the actual "never fails" build, scoped)
+Robust counting is the success-verifier; the solver itself still needs ONE of:
+1. **Orbifold-Tutte (Aigerman-Lipman)** -- bijective-BY-CONSTRUCTION spherical
+   embedding via a linear solve with cone points (no untangling, no local minima).
+   The principled in-house answer. Pair with #3 for the most extreme tails.
+2. **Local stereographic-zoom untangle** -- for each folded cluster, rotate its
+   centroid to a pole and stereographic-project (this ZOOMS the crushed region to
+   O(1) so float64 regains resolution), untangle the patch in the plane, map back.
+   Defeats the precision wall WITHOUT mpmath; promising, untested.
+3. **Mixed/extended precision** -- mpmath (or local-zoom) only for the few
+   crushed/collapsed faces; float64 elsewhere. The literal ceiling-remover.
+Gate already routes flagged-complex shapes to an escalation slot; drop the chosen
+solver there (produce + flag, never fail).
+- Lower priority: `recommend_lmax` into batch summary; speed high-L `Y` build.
 
 ## Resolution / test
 - Batch now `TARGET_VERTS = 7000` (user: raise everybody to 6-8k for detail).
