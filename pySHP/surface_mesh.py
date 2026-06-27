@@ -1172,106 +1172,41 @@ class surface_mesh:
         # Based on MATLAB @surface_mesh/props.m
         # Remember: Gauss curvature is the angle defect at a vertex
         #           Mean curvature is edge length x dihedral angle at edge
-        H = np.zeros(len(X))
-        M = np.zeros(len(X))
-        dA = np.zeros(len(X))
-        
-        for ix in range(len(X)):
-            V_a = X[ix, :]
-            
-            # Find triangles containing this vertex
-            # In MATLAB: [r c] = ind2sub(size(C),find(C==ix))
-            # r contains row indices (face indices), c contains column indices (vertex position in face)
-            face_mask = (C == ix)
-            r = np.where(face_mask)[0]  # face indices containing vertex ix
-            
-            if len(r) == 0:
-                dA[ix] = 0
-                M[ix] = 0
-                continue
-            
-            # Calculate dihedral angles of all unique pairs of triangles
-            # In MATLAB: [I2 I1] = ind2sub([length(r) length(r)],find( tril(ones(length(r)),-1)~=0))
-            # This creates all pairs (i,j) where i < j
-            nr = len(r)
-            if nr > 1:
-                # Create lower triangular matrix (excluding diagonal)
-                I1, I2 = np.tril_indices(nr, -1)
-                # I2, I1 are pairs of indices into r
-            else:
-                I1 = np.array([], dtype=int)
-                I2 = np.array([], dtype=int)
-            
-            H[ix] = 0
-            for I in range(len(I2)):
-                # Each permutation selects a triangle pair
-                r1_idx = I2[I]  # index into r
-                r2_idx = I1[I]  # index into r
-                r1 = r[r1_idx]  # face index in C
-                r2 = r[r2_idx]  # face index in C
-                
-                tr1 = C[r1, :]  # first triangle (vertex indices)
-                tr2 = C[r2, :]  # second triangle (vertex indices)
-                
-                # Find the shared edge (the vertex that's not ix but is in both triangles)
-                # In MATLAB: tr1r = tr1((tr1~=ix)); tr2r = tr2((tr2~=ix));
-                tr1r = tr1[tr1 != ix]  # vertices in tr1 excluding ix
-                tr2r = tr2[tr2 != ix]  # vertices in tr2 excluding ix
-                
-                # Find common vertex (the other vertex on the shared edge)
-                # In MATLAB: rvrs = (length(tr1)-1):-1:1;
-                #           indx = max(tr1r.*(tr1r==tr2r) + tr1r(rvrs).*(tr1r(rvrs)==tr2r));
-                # This finds the vertex that appears in both tr1r and tr2r
-                common_vertices = np.intersect1d(tr1r, tr2r)
-                
-                if len(common_vertices) > 0:
-                    indx = common_vertices[0]  # shared edge vertex
-                    V_e = X[indx, :]
-                    
-                    # Find the far vertex in tr2 (not ix, not indx)
-                    # In MATLAB: V_far = X(tr2(tr2~=ix & tr2 ~=indx),:);
-                    far_mask = (tr2 != ix) & (tr2 != indx)
-                    if np.any(far_mask):
-                        V_far = X[tr2[far_mask][0], :]
-                        
-                        # Calculate edge length
-                        # In MATLAB: Lij = sqrt((V_a(1)-V_e(1))^2 + (V_a(2)-V_e(2))^2+(V_a(3)-V_e(3))^2);
-                        Lij = np.linalg.norm(V_a - V_e)
-                        
-                        # Surface normals
-                        n1 = n[r1, :]
-                        n2 = n[r2, :]
-                        
-                        # Dihedral angle
-                        # In MATLAB: theta(I) = acos(dot(n1,n2));
-                        cos_theta = np.clip(np.dot(n1, n2), -1.0, 1.0)
-                        theta = np.arccos(cos_theta)
-                        
-                        # Determine if convex or concave
-                        # Complete the Hessian normal form of the planes
-                        # In MATLAB: P1 = -(n1(1)*V_a(1) + n1(2)*V_a(2) + n1(3)*V_a(3));
-                        P1 = -np.dot(n1, V_a)
-                        P2 = -np.dot(n2, V_a)
-                        
-                        # Calculate whether the far point lies in the half-space of the normal direction
-                        # In MATLAB: s = sign(dot(n1,V_far)+P1);
-                        s = np.sign(np.dot(n1, V_far) + P1)
-                        
-                        # Accumulate curvature
-                        # In MATLAB: H(ix) = H(ix) + Lij * real(theta(I))/4 * (s);
-                        H[ix] = H[ix] + Lij * np.real(theta) / 4 * s
-            
-            # The average area of triangles around the vertex V_a
-            # In MATLAB: dA(ix) = sum(F_areas(r))/3;
-            dA[ix] = np.sum(F_areas[r]) / 3
-            
-            if dA[ix] == 0:
-                M[ix] = 0
-            else:
-                # In MATLAB: H(ix) = H(ix)./dA(ix);
-                H[ix] = H[ix] / dA[ix]
-                # In MATLAB: M(ix) = H(ix).*dA(ix);
-                M[ix] = H[ix] * dA[ix]
+        # Mean curvature (edge-based, vectorised -- exact match to the per-vertex
+        # dihedral formula  H_v = (1/dA_v) * sum_{incident edges} L_e*theta_e/4*s,
+        # with s the edge convexity sign and dA_v = (1/3) sum incident face areas).
+        nv = len(X)
+        Fc = np.asarray(C, dtype=int)
+        nf = len(Fc)
+        ev = np.vstack([Fc[:, [0, 1]], Fc[:, [1, 2]], Fc[:, [2, 0]]])
+        foe = np.tile(np.arange(nf), 3)
+        ek = np.sort(ev, axis=1)
+        order = np.lexsort((ek[:, 1], ek[:, 0]))
+        ek_s = ek[order]
+        foe_s = foe[order]
+        dup = np.where(np.all(ek_s[1:] == ek_s[:-1], axis=1))[0]   # interior edges
+        ea = ek_s[dup, 0]
+        eb = ek_s[dup, 1]
+        ef1 = foe_s[dup]
+        ef2 = foe_s[dup + 1]
+        Lij = np.linalg.norm(X[ea] - X[eb], axis=1)
+        costheta = np.clip(np.einsum('ij,ij->i', n[ef1], n[ef2]), -1.0, 1.0)
+        theta = np.arccos(costheta)
+        far2 = Fc[ef2].sum(axis=1) - ea - eb               # off-edge vertex of f2
+        s = np.sign(np.einsum('ij,ij->i', n[ef1], X[far2] - X[ea]))
+        contrib = Lij * theta / 4.0 * s
+        H = np.zeros(nv)
+        np.add.at(H, ea, contrib)
+        np.add.at(H, eb, contrib)
+        M = H.copy()                                        # M = un-normalised sum
+        dA = np.zeros(nv)
+        np.add.at(dA, Fc.ravel(), np.repeat(F_areas, 3))
+        dA = dA / 3.0
+        nz = dA > 0
+        Hn = np.zeros(nv)
+        Hn[nz] = M[nz] / dA[nz]
+        H = Hn
+        M[~nz] = 0.0
         
         # Total mean curvature
         # In MATLAB: h = sum(real(-M))./A;
@@ -6424,8 +6359,16 @@ class surface_mesh:
                 continue
             v1_idx, v2_idx = int(self.E[edge_idx, 0]), int(self.E[edge_idx, 1])
             ek = (min(v1_idx, v2_idx), max(v1_idx, v2_idx))
-            adj = [fi for fi in edge_to_faces.get(ek, []) if fi not in deleted]
-            if not adj:
+            faces_here = edge_to_faces.get(ek, [])
+            adj = [fi for fi in faces_here if fi not in deleted]
+            # Only split when ALL of this edge's original adjacent faces are
+            # still intact. If a neighbour was already split this pass (an
+            # adjacent long edge sharing a triangle), skip now and split on a
+            # later iteration -- otherwise we'd re-triangulate only one side of
+            # the edge and leave a T-junction crack (a hole) in the mesh. The
+            # QEM decimation pass used to mask these cracks, but it is skipped
+            # when refinement does not overshoot target_faces (high targets).
+            if not adj or len(adj) != len(faces_here):
                 continue
 
             midpoint = (self.X[v1_idx] + self.X[v2_idx]) / 2.0
