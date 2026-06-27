@@ -1164,6 +1164,125 @@ def fit_shp(mesh, L_max=16, oversample=40, max_subdiv=3, verbose=True):
 
 
 # --------------------------------------------------------------------------- #
+# Rotation + scale invariance (canonical SHP via first-order-ellipsoid align)
+# --------------------------------------------------------------------------- #
+def _l1_basis_at_axes(shp):
+    """3x3 matrix B with B[axis, order] = Y_{1,order}(axis) (order = -1,0,1).
+
+    The degree-1 real SH are linear in direction, so ``y1(s) = B^T s``; this is
+    measured (not assumed) to stay agnostic to the basis normalisation/order.
+    """
+    axes = np.eye(3)
+    t, p, _ = kk_cart2sph(axes[:, 0], axes[:, 1], axes[:, 2])
+    B = np.zeros((3, 3))
+    for ki, k in enumerate((-1, 0, 1)):
+        B[:, ki] = np.asarray(shp.basis.ylk_bosh(1, k, p, t)).flatten()
+    return B
+
+
+def shp_degree_energy(shp, scale_invariant=True):
+    """Per-degree rotation-invariant SHP descriptor (for shape distance).
+
+    ``E_l = sqrt(sum_{m,channel} c_{l,m,channel}^2)`` is invariant to BOTH object
+    and parameter-domain rotations (rotations are unitary within each degree and
+    orthogonal across x/y/z), so it is a robust shape signature -- unlike a
+    canonical *pose*, it is well-defined even for symmetric shapes. With
+    ``scale_invariant`` the vector is normalised by its l>=1 norm (size-free).
+    Compare two shapes by the Euclidean distance between their ``E`` vectors.
+    """
+    L = int(shp.L_max)
+    xc = np.asarray(shp.xc, float)
+    yc = np.asarray(shp.yc, float)
+    zc = np.asarray(shp.zc, float)
+    E = np.zeros(L + 1)
+    idx = 0
+    for l in range(L + 1):
+        n = 2 * l + 1
+        sl = slice(idx, idx + n)
+        E[l] = np.sqrt(np.sum(xc[sl] ** 2 + yc[sl] ** 2 + zc[sl] ** 2))
+        idx += n
+    if scale_invariant:
+        denom = np.linalg.norm(E[1:]) if L >= 1 else 0.0
+        if denom > 1e-15:
+            E = E / denom
+    return E
+
+
+def canonicalize_shp(mesh, L_max=16, oversample=40, scale_mode='ellipsoid',
+                     fix_sign=True, verbose=True):
+    """Rotation + scale + translation **invariant** ('canonical') SHP surface.
+
+    First-order-ellipsoid (FOE / Brechbuhler) alignment: the degree-1
+    coefficients define a linear map ``A`` from sphere directions to the object
+    (the dominant ellipsoid). ``A = U S V^T`` gives the object rotation ``U``,
+    the parameter-domain rotation ``V`` and the semi-axes ``S``. We apply ``U``
+    to the object, ``V`` to the sphere samples, divide by the scale, and
+    **re-fit** -- so no Wigner matrices are needed and ``A`` becomes diagonal
+    (canonical). Because the upstream cMCF pipeline is ~rotation-equivariant,
+    the resulting coefficients are ~invariant to the input mesh's pose and size,
+    which is what makes SHP shape-distance / comparison meaningful.
+
+    Returns ``(shp_canonical, info)``.
+    """
+    from ..shp_surface import shp_surface
+
+    dense = upsample_for_shp(mesh, L_max=L_max, oversample=oversample,
+                             verbose=False)
+    S = _sphere_from_tp(dense)
+    X = np.asarray(dense.X, float).copy()
+    X -= X.mean(axis=0)                                   # translation
+
+    d0 = surface_mesh(X.copy(), np.asarray(dense.F, int).copy())
+    d0.t = dense.t.copy()
+    d0.p = dense.p.copy()
+    s0 = shp_surface(d0, int(L_max))
+
+    C1 = np.array([[s0.xc[1], s0.xc[2], s0.xc[3]],
+                   [s0.yc[1], s0.yc[2], s0.yc[3]],
+                   [s0.zc[1], s0.zc[2], s0.zc[3]]], dtype=float)
+    A = C1 @ _l1_basis_at_axes(s0).T                      # direction -> object
+    U, Sig, Vt = np.linalg.svd(A)
+    Vo = Vt.T
+    if np.linalg.det(U) < 0:
+        U[:, -1] *= -1.0
+    if np.linalg.det(Vo) < 0:
+        Vo[:, -1] *= -1.0
+
+    Xc = X @ U                                            # object rotation
+    Sc = S @ Vo                                           # domain rotation
+
+    if scale_mode == 'rms':
+        scale = float(np.sqrt(np.mean(np.sum(Xc ** 2, axis=1))))
+    else:                                                 # 'ellipsoid'
+        scale = float(Sig[0])
+    scale = scale if scale > 1e-12 else 1.0
+    Xc = Xc / scale
+
+    if fix_sign:
+        # Resolve the residual +/- axis ambiguity deterministically via the
+        # 3rd moment (skewness); flip in pairs to stay a proper rotation.
+        m3 = np.mean(Xc ** 3, axis=0)
+        want = np.where(m3 < 0, -1.0, 1.0)
+        if np.prod(want) < 0:                  # odd # of flips -> fix parity on
+            want[int(np.argmin(np.abs(m3)))] *= -1.0   # the least-skewed axis
+        Xc = Xc * want[None, :]
+
+    dc = surface_mesh(Xc, np.asarray(dense.F, int).copy())
+    t, p, _ = kk_cart2sph(Sc[:, 0], Sc[:, 1], Sc[:, 2])
+    dc.t = t
+    dc.p = p
+    shp_c = shp_surface(dc, int(L_max))
+
+    info = {'scale': scale, 'semi_axes': [float(x) for x in Sig],
+            'det_obj': float(np.linalg.det(U)),
+            'det_dom': float(np.linalg.det(Vo))}
+    if verbose:
+        print(f"  canonicalize_shp: semi-axes={np.round(Sig, 4).tolist()}, "
+              f"scale={scale:.4f}")
+    return shp_c, info
+
+
+# --------------------------------------------------------------------------- #
 # End-to-end
 # --------------------------------------------------------------------------- #
 def parameterize_to_sphere(
