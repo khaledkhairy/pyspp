@@ -34,7 +34,10 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
 - `2f0cd62` grid-quadrature high-L_max SH analysis (scales to L=72) + recommend_lmax
 - `11d00d0` analyze_shp (LS<=24 / grid>24) -> L_max=60 everywhere + Tutte Stage-1b fallback
 - `59faf32` batch TARGET_VERTS=7000 + CLI smoke test (run_parameterization_test.py)
-- `b46d6e9` robust_foldover_count (exact fallback) + honest Stage-2c classification  <-- HEAD
+- `b46d6e9` robust_foldover_count (exact fallback) + honest Stage-2c classification
+- (pending) **guaranteed solver: local stereographic-zoom untangle** + Stage-2c
+  wiring + guaranteed-bijective resolution cap -> hydra reaches **true robust 0**
+  (was too_complex); clean shapes untouched  <-- HEAD
 - Git identity is NOT configured; commit with one-off:
   `git -c user.email="khaledkhairy@yahoo.com" -c user.name="Khaled Khairy" commit ...`
 - NOTE: the other files shown modified in `git status` (tiered_spherical_parameterization.py,
@@ -55,9 +58,14 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
    starts** (accepts steps that don't increase folds); keep-best by (folds, cov);
    `lambda_shape` shape regularizer; `free_mask` for local surgery; `area_blend`
    1.0=uniform (best for SHP) .. 0.0=curvature.
-2c. **escalation gate** — trigger = residual foldovers (+ `kappa`):
-    0 -> `bijective`; few (<=~2% faces & kappa<=6) -> `local_fold_surgery`;
-    many/high-kappa -> `too_complex` (flagged, no wasted compute).
+2c. **escalation gate + guaranteed solver** — trigger = residual robust folds:
+    0 -> `bijective`; few & kappa<=6 -> `local_fold_surgery` (cheap); anything
+    remaining -> **`guaranteed_untangle`** = local stereographic-zoom untangle
+    from the best-robust snapshot (Tutte/Mobius), which defeats the float64
+    precision wall and takes a hydra to **true robust 0** (produce + flag, never
+    skip). If a shape hits the float64 *representation* ceiling at high res
+    (exactly-collapsed faces, `n_degen>0`), a **resolution cap** re-derives at a
+    coarser `target_verts` where a bijective float64 embedding exists.
 2b. **anisotropic refinement** (`anisotropic_rounds`) — stretch-aligned: split the
     3-D edges the map stretched (long on sphere) + re-equalize (warm start);
     GATED on fold-free (refining a folded map explodes). ~2x thin-feature fidelity.
@@ -67,16 +75,25 @@ Result dict keys: `mesh, shp, quality, n_foldovers, complexity, shp_rms_rel,
 stage1_diag, stage1b_diag, tutte_info, stage2_diag, aniso_history, surgery, ...`.
 
 ## Status on test_set (now: target_verts~2000, **L_max=60** default in batch)
-- 7/9 **bijective**: BDH6230 brain, echinocyte, mushroom(x4), zebrafish.
+- 8/9 **bijective**: BDH6230 brain, echinocyte, mushroom(x4), zebrafish, **+hydra**.
 - `1dpx` (protein) **near_bijective** (3 folds); SHP RMS **0.09%** at L=60
   (was 0.51% at L=16). cMCF path (Tutte fallback was worse here, so gate kept cMCF).
-- `hydra_full_smooth` **too_complex** — Tutte fallback cut folds **261 -> 35** (vs
-  cMCF), confirming the bijective-start architecture, but it does NOT reach 0: a
-  float64 PRECISION WALL (tentacle/body area ratio exceeds machine precision at
-  2k verts -> tentacles collapse to sub-epsilon triangles that underflow into
-  spurious folds). Mean-value weights were WORSE (117) -> it's precision, not
-  weighting. The principled fix is a progressive/multiresolution embedding
-  (validity-by-construction, no global ill-conditioned solve) -- see NEXT.
+  Its 3 folds are **kernel-empty** (inverted but NOT degenerate, `n_degen==0`):
+  the zoom untangle is *attempted* but cannot clear them (a fixed-boundary
+  vertex move can't undo a non-star-shaped overlap) -- this needs an **edge
+  flip**, a different tool (still backlog). Correctly NOT resolution-capped
+  (coarsening doesn't fix kernel-empty folds).
+- `hydra_full_smooth` is now **bijective (true robust 0)** via the guaranteed
+  stereographic-zoom untangle (`tutte+zoom`). SHP RMS **0.13%** at L=60 (the
+  high-distortion area distribution is fine for the grid-quadrature analysis,
+  which interpolates the tentacle faithfully *because the map is bijective*).
+  At 2k it untangles in place; at the batch's 7k it crosses the float64
+  *representation* ceiling (~190 tentacle-tip faces collapse to coincident
+  float64 points -- unseparable) so the **resolution cap** re-derives at ~3.5k
+  (bijective there) and flags `precision_capped`. The earlier diagnosis (a
+  float64 precision wall) was right; the key insight is that the wall hits
+  FOLDS *locally* (curable by the zoom) and the area allocation only crosses the
+  hard *representation* ceiling at high resolution (curable by capping res).
 
 ## Conventions / gotchas (IMPORTANT)
 - Spherical: `kk_cart2sph`/`kk_sph2cart`; `t`=colatitude∈[0,π], `p`=azimuth.
@@ -162,20 +179,60 @@ precision may ultimately be needed for the most extreme (Q~0.007) shapes.
   general) AND the worst sit in sub-float64-precision crushed regions. No float64
   trick closes them.
 
-## NEXT: the guaranteed solver (the actual "never fails" build, scoped)
-Robust counting is the success-verifier; the solver itself still needs ONE of:
-1. **Orbifold-Tutte (Aigerman-Lipman)** -- bijective-BY-CONSTRUCTION spherical
-   embedding via a linear solve with cone points (no untangling, no local minima).
-   The principled in-house answer. Pair with #3 for the most extreme tails.
-2. **Local stereographic-zoom untangle** -- for each folded cluster, rotate its
-   centroid to a pole and stereographic-project (this ZOOMS the crushed region to
-   O(1) so float64 regains resolution), untangle the patch in the plane, map back.
-   Defeats the precision wall WITHOUT mpmath; promising, untested.
-3. **Mixed/extended precision** -- mpmath (or local-zoom) only for the few
-   crushed/collapsed faces; float64 elsewhere. The literal ceiling-remover.
-Gate already routes flagged-complex shapes to an escalation slot; drop the chosen
-solver there (produce + flag, never fail).
-- Lower priority: `recommend_lmax` into batch summary; speed high-L `Y` build.
+## DONE: the guaranteed solver (local stereographic-zoom untangle) + wiring
+Built option #2 from the old plan -- it reaches **true robust 0** on hydra, so
+the orbifold-Tutte (#1) and mpmath (#3) fallbacks turned out **not needed** for
+bijectivity. New functions in `cmcf_spherical_parameterization.py`:
+- `_robust_face_signs(S, F)` -- per-face exact orientation sign (+1/-1/0);
+  `robust_foldover_count` now wraps it. The fold *detector* used during untangle.
+- `_planar_hinge_untangle(P, T, free, ...)` -- 2-D untangler: push every triangle
+  signed area above a small +margin (hinge energy) + light Laplacian smoothing,
+  Adam with a fold-count-guarded backtrack; boundary pinned. Patch pre-rescaled
+  to O(1) so float64 has full resolution.
+- `local_stereographic_untangle(mesh, ring=3, expand_max=2, time_budget=90, ...)`
+  -- per connected folded/degenerate cluster: rotate the crushed centroid to the
+  +z pole, stereographic-project a ring-padded patch from the *south* pole (so
+  the crushed cap lands at the chart ORIGIN), recentre + rescale to O(1),
+  `_planar_hinge_untangle`, then map free verts back (inverse stereographic ->
+  inverse rotation). The chart is orientation-preserving, so fold-free-in-plane
+  => fold-free-on-sphere, and the O(1) separations survive the round-trip to the
+  tiny cap. A cleared patch must match the patch (== global) majority sign, so it
+  can never be globally flipped into new folds. `time_budget` bounds effort.
+- `guaranteed_untangle(mesh, seed_maps=...)` -- picks the **fewest-robust-fold**
+  start among the current map + snapshots, then runs the above. CRITICAL: the
+  Stage-2 area equalizer optimises an unreliable float64 fold count and can
+  *increase* hydra's robust folds (4 -> 43) and spread them, so the rescue must
+  start from the Mobius/Tutte snapshot, NOT the equalized map.
+Wiring (`parameterize_to_sphere` Stage 2c): residual robust folds -> (optional
+`local_fold_surgery`) -> `guaranteed_untangle` (seeded by the `m_centered` Mobius
+snapshot + the `m_sphere_raw` Tutte init). On reaching 0, `method += '+zoom'`,
+`result['rescued']=True`. Rescued shapes SKIP Stage-2b anisotropic refine (it
+re-runs the float64 equalizer and would re-fold the crushed cap + worsen the
+precision wall); a defensive post-aniso re-verify zoom-untangles once more if the
+warm re-equalize regressed a non-rescued shape.
+**Resolution cap** (the high-res representation-ceiling backstop, replaces the
+need for mpmath/multi-chart on this test set): if a result is non-bijective AND
+has exactly-degenerate faces (`n_degen>0`, the ceiling signature), re-derive at
+`target_verts*0.5` (down to `precision_floor_verts=1500`, depth<=4). Gated on
+`n_degen>0` (NOT kappa -- kappa>6 for ALL the hard shapes incl. clean mushroom,
+so it can't discriminate; only the representation ceiling makes degenerate faces).
+Result flagged `precision_capped`. Hydra@7k -> capped to ~3.5k bijective.
+
+## Validation (`run_parameterization_test.py`)
+- hydra@2k: `tutte+zoom` **bijective 0 folds**, 0.13% RMS @L=60 (was too_complex).
+- hydra@7k: float64 representation ceiling (190 collapsed faces) -> resolution
+  cap -> **bijective** @3501 verts, 0.11% RMS @L=60, `precision_capped`.
+- 8 clean shapes UNCHANGED (cmcf, bijective); 1dpx near_bijective (3 folds,
+  kernel-empty, attempted-but-not-capped); no regressions.
+
+## NEXT (optional, lower priority)
+- **1dpx kernel-empty single folds**: need an **edge-flip** surgery (the zoom
+  cannot fix a non-star-shaped overlap). Different tool from the precision wall.
+- Orbifold-Tutte (#1) / mpmath (#3): only if a future shape's zoom+cap can't
+  reach 0 (none on the current test set). Orbifold-Tutte would also give hydra a
+  *uniform* area map (constructive cone-point area) if SHP at high L is ever
+  insufficient -- but grid-quadrature already reconstructs hydra at 0.13%.
+- `recommend_lmax` into batch summary; speed high-L `Y` build.
 
 ## Resolution / test
 - Batch now `TARGET_VERTS = 7000` (user: raise everybody to 6-8k for detail).

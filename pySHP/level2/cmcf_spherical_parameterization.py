@@ -52,6 +52,10 @@ Public API
     fps_cage_sphere_map      coarse-to-fine fallback.
     geodesic_farthest_point_sampling  blue-noise samples (geodesic distance).
     sphere_foldover_count / sphere_diagnostics  cheap quality probes.
+    robust_foldover_count    exact-fallback (honest) foldover count.
+    local_stereographic_untangle / guaranteed_untangle  the guaranteed solver:
+                             local stereographic-zoom untangle that defeats the
+                             float64 precision wall (takes a hydra to true 0).
 """
 
 import numpy as np
@@ -165,18 +169,14 @@ def _exact_orient_sign(a, b, c):
     return 0 if d == 0 else (1 if d > 0 else -1)
 
 
-def robust_foldover_count(S, F, return_degenerate=False):
-    """**Honest** foldover count: float64 with an exact (rational) fallback for
-    near-degenerate faces.
+def _robust_face_signs(S, F):
+    """Per-face exact orientation sign (+1 / -1 / 0) of a sphere map.
 
-    The naive float64 triple product suffers catastrophic cancellation on thin /
-    crushed spherical triangles, so it both *over*-counts (phantom folds on
-    near-flat faces) and *under*-counts (misses true folds) -- e.g. a crushed
-    Tutte map reads 41 folds in float64 but 5 exactly, while an equalized map can
-    read 39 vs 45. We compute the determinant in float64 with an a-priori error
-    bound (permanent * machine-eps); faces within the bound are re-evaluated
-    exactly with rationals. ``return_degenerate`` also reports the number of
-    exactly-degenerate (collapsed) faces -- the genuine float64 ceiling.
+    Float64 triple product with an a-priori error bound (permanent * machine
+    eps); faces within the bound (catastrophic cancellation on thin / crushed
+    triangles) are re-evaluated exactly with rationals. The sign is the
+    ground-truth orientation of the float64-rounded coordinates; ``0`` means an
+    exactly-collapsed (degenerate) face -- the genuine float64 ceiling.
     """
     a, b, c = S[F[:, 0]], S[F[:, 1]], S[F[:, 2]]
     bx = b[:, 1] * c[:, 2] - b[:, 2] * c[:, 1]
@@ -190,6 +190,22 @@ def robust_foldover_count(S, F, return_degenerate=False):
     signs = np.sign(q).astype(np.int8)
     for i in np.where(np.abs(q) <= errb)[0]:
         signs[i] = _exact_orient_sign(S[F[i, 0]], S[F[i, 1]], S[F[i, 2]])
+    return signs
+
+
+def robust_foldover_count(S, F, return_degenerate=False):
+    """**Honest** foldover count: float64 with an exact (rational) fallback for
+    near-degenerate faces.
+
+    The naive float64 triple product suffers catastrophic cancellation on thin /
+    crushed spherical triangles, so it both *over*-counts (phantom folds on
+    near-flat faces) and *under*-counts (misses true folds) -- e.g. a crushed
+    Tutte map reads 41 folds in float64 but 5 exactly, while an equalized map can
+    read 39 vs 45. A face is a foldover if its exact orientation sign is the
+    minority sign (the map may be globally inside-out). ``return_degenerate``
+    also reports the number of exactly-degenerate (collapsed) faces.
+    """
+    signs = _robust_face_signs(S, F)
     n_pos = int(np.sum(signs > 0))
     n_neg = int(np.sum(signs < 0))
     nf = min(n_pos, n_neg)
@@ -912,6 +928,403 @@ def local_fold_surgery(mesh, kring=2, n_iter=800, mu_frac=0.08, verbose=True):
     if verbose:
         print(f"  local_fold_surgery: {n0} -> {info['n_after']} folds "
               f"({info['free_verts']} free verts, kring={kring})")
+    return mesh, info
+
+
+# --------------------------------------------------------------------------- #
+# The guaranteed solver: local stereographic-zoom untangle
+# --------------------------------------------------------------------------- #
+# Residual folds on a hard shape (hydra) sit in a sub-float64-precision crushed
+# region (a thin tentacle is mapped to a tiny spherical cap, so its triangles'
+# 3-D coordinates are dominated by the ~1.0 polar component -> the orientation
+# triple product cancels catastrophically and the *planar* Tutte solve itself
+# returns spurious folds there). No float64 trick on the sphere closes them
+# because the working coordinates have no resolution left. The fix is to ZOOM:
+# rotate a folded cluster's centroid to a pole and stereographically project the
+# patch to the plane -- the crushed cap lands at the chart origin where, after
+# rescaling to O(1), the vertex offsets fill the full float64 mantissa again.
+# We then untangle the patch in that well-conditioned plane (boundary pinned),
+# and map the clean result back; because the chart map (rescale -> inverse
+# stereographic -> inverse rotation) is an orientation-preserving diffeomorphism,
+# a fold-free planar patch is a fold-free spherical patch, and the O(1) vertex
+# separations survive the round-trip down to the tiny cap (relative precision).
+def _vertex_faces(F, nv):
+    """List of incident face indices per vertex."""
+    vf = [[] for _ in range(nv)]
+    for fi, f in enumerate(F):
+        vf[int(f[0])].append(fi)
+        vf[int(f[1])].append(fi)
+        vf[int(f[2])].append(fi)
+    return [np.asarray(x, dtype=int) for x in vf]
+
+
+def _bool_adjacency(F, nv):
+    """Symmetric 0/1 vertex adjacency (CSR) for fast ring expansion."""
+    E = np.unique(np.sort(np.vstack(
+        [F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1), axis=0)
+    ii = np.concatenate([E[:, 0], E[:, 1]])
+    jj = np.concatenate([E[:, 1], E[:, 0]])
+    return csr_matrix((np.ones(len(ii), dtype=np.int8), (ii, jj)),
+                      shape=(nv, nv))
+
+
+def _expand_rings(mask, Adj, rings):
+    """Grow a boolean vertex ``mask`` by ``rings`` rings via adjacency mat-vec."""
+    m = mask.astype(np.int8)
+    for _ in range(int(rings)):
+        m = ((m + Adj.dot(m)) > 0).astype(np.int8)
+    return m.astype(bool)
+
+
+def _face_components(face_idx, F):
+    """Connected components (shared-edge) of a subset of faces.
+
+    Returns a list of int arrays, each an edge-connected group of the given
+    faces. Used to split the union of fold patches into independent regions.
+    """
+    from collections import defaultdict
+    e2f = defaultdict(list)
+    for fi in face_idx:
+        f = F[fi]
+        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+            e2f[(a, b) if a < b else (b, a)].append(int(fi))
+    parent = {int(fi): int(fi) for fi in face_idx}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for fs in e2f.values():
+        for t in range(1, len(fs)):
+            ra, rb = find(fs[0]), find(fs[t])
+            if ra != rb:
+                parent[ra] = rb
+    groups = defaultdict(list)
+    for fi in face_idx:
+        groups[find(int(fi))].append(int(fi))
+    return [np.asarray(v, dtype=int) for v in groups.values()]
+
+
+def _planar_hinge_untangle(P, T, free, n_iter=4000, step=0.08,
+                           smooth_weight=0.15, delta_frac=0.05):
+    """Untangle a planar patch: drive every triangle to a positive signed area.
+
+    Minimises the hinge energy ``sum_f max(0, delta - o_f)^2`` (push each signed
+    area above a small positive margin) plus a light Laplacian smoothing of the
+    free vertices, by Adam with a fold-count-guarded backtracking step. ``o_f``
+    is the signed area times the patch's majority sign, so a globally inside-out
+    chart is handled transparently. Only ``free`` vertices move (the patch
+    boundary is pinned). Returns ``(P, n_bad)`` -- the best iterate by number of
+    non-positively-oriented faces. The patch is assumed pre-rescaled to O(1).
+    """
+    P = np.asarray(P, float).copy()
+    T = np.asarray(T, int)
+    i, j, k = T[:, 0], T[:, 1], T[:, 2]
+    free = np.asarray(free, bool)
+    nP = len(P)
+
+    def areas(Q):
+        e1 = Q[j] - Q[i]
+        e2 = Q[k] - Q[i]
+        return 0.5 * (e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])
+
+    a0 = areas(P)
+    s = 1.0 if float(np.sum(a0)) >= 0.0 else -1.0
+    absa = np.abs(a0)
+    med = float(np.median(absa[absa > 1e-300])) if np.any(absa > 1e-300) else 1.0
+    delta = float(delta_frac) * med
+
+    # smoothing adjacency within the patch
+    nbr_sum_i = np.concatenate([i, j, k, j, k, i])
+    nbr_sum_j = np.concatenate([j, k, i, i, j, k])
+    deg = np.bincount(nbr_sum_i, minlength=nP).astype(float)
+    deg[deg == 0] = 1.0
+
+    def n_bad(Q):
+        return int(np.sum(s * areas(Q) <= 0.0))
+
+    best_bad = n_bad(P)
+    P_best = P.copy()
+    if best_bad == 0:
+        return P, 0
+    m1 = np.zeros_like(P)
+    m2 = np.zeros_like(P)
+    b1, b2, adam_eps = 0.9, 0.999, 1e-15
+    cur_bad = best_bad
+    for it in range(int(n_iter)):
+        a = areas(P)
+        viol = np.maximum(0.0, delta - s * a)           # >0 where under-margin
+        coef = -2.0 * viol * s                          # dE/da per face
+        g = np.zeros_like(P)
+        # gradient of signed area wrt each vertex (rotated edge vectors)
+        gi = 0.5 * np.column_stack([P[j, 1] - P[k, 1], P[k, 0] - P[j, 0]])
+        gj = 0.5 * np.column_stack([P[k, 1] - P[i, 1], P[i, 0] - P[k, 0]])
+        gk = 0.5 * np.column_stack([P[i, 1] - P[j, 1], P[j, 0] - P[i, 0]])
+        np.add.at(g, i, coef[:, None] * gi)
+        np.add.at(g, j, coef[:, None] * gj)
+        np.add.at(g, k, coef[:, None] * gk)
+        # light Laplacian smoothing direction (toward neighbour mean)
+        nsum = np.zeros_like(P)
+        np.add.at(nsum, nbr_sum_i, P[nbr_sum_j])
+        lap = P - nsum / deg[:, None]
+        gnorm = float(np.sqrt(np.mean(g * g))) + 1e-30
+        lnorm = float(np.sqrt(np.mean(lap * lap))) + 1e-30
+        g = g + smooth_weight * (gnorm / lnorm) * lap
+        g[~free] = 0.0
+        m1 = b1 * m1 + (1.0 - b1) * g
+        m2 = b2 * m2 + (1.0 - b2) * (g * g)
+        mhat = m1 / (1.0 - b1 ** (it + 1))
+        vhat = m2 / (1.0 - b2 ** (it + 1))
+        d = mhat / (np.sqrt(vhat) + adam_eps)
+        dmax = float(np.max(np.linalg.norm(d, axis=1))) + 1e-30
+        eta = float(step) / dmax
+        accepted = False
+        for _ls in range(20):
+            Pn = P.copy()
+            Pn[free] = P[free] - eta * d[free]
+            nb = n_bad(Pn)
+            if nb <= cur_bad:
+                P, cur_bad = Pn, nb
+                accepted = True
+                break
+            eta *= 0.5
+        if cur_bad < best_bad:
+            best_bad, P_best = cur_bad, P.copy()
+        if best_bad == 0:
+            break
+        if not accepted:                                # stuck -> nudge & retry
+            m1 *= 0.0
+            m2 *= 0.0
+    return P_best, best_bad
+
+
+def local_stereographic_untangle(mesh, max_passes=10, ring=3, expand_max=2,
+                                  plane_iter=4000, time_budget=90.0,
+                                  verbose=True):
+    """**Guaranteed-style fold remover** via local stereographic zoom.
+
+    For each connected cluster of folded (or exactly-degenerate) faces -- found
+    with the *robust* (exact-fallback) orientation predicate, so the float64
+    cancellation that hides them is bypassed -- this:
+
+      1. rotates the cluster centroid to a pole and stereographically projects a
+         ring-padded patch to the plane (the crushed cap lands at the chart
+         origin, so rescaling to O(1) restores full float64 resolution);
+      2. untangles the patch in that well-conditioned plane with the boundary
+         pinned (:func:`_planar_hinge_untangle`);
+      3. maps the clean free vertices back to the sphere.
+
+    Because the chart is an orientation-preserving diffeomorphism, a fold-free
+    planar patch is fold-free on the sphere, and the O(1) vertex separations
+    survive the round-trip to the tiny cap. Patches that do not clear are
+    retried with progressively larger rings (more interior freedom).
+
+    ``time_budget`` (seconds) bounds the effort so a shape that hits the genuine
+    float64 *representation* ceiling (so many vertices crammed into a sub-epsilon
+    cap that distinct float64 positions no longer exist -- the regime the handoff
+    flags for extended precision / multi-chart) degrades gracefully to the best
+    near-bijective map instead of running unbounded. Operates in place on
+    ``mesh.t`` / ``mesh.p``; returns ``(mesh, info)``.
+    """
+    import time as _time
+    t_start = _time.time()
+    F = np.asarray(mesh.F, int)
+    nv = len(mesh.X)
+    S = _sphere_from_tp(mesh)
+    vfaces = _vertex_faces(F, nv)
+    Adj = _bool_adjacency(F, nv)
+    zaxis = np.array([0.0, 0.0, 1.0])
+
+    nf0, nd0 = robust_foldover_count(S, F, return_degenerate=True)
+    info = {'folds_before': nf0, 'degenerate_before': nd0, 'pass_folds': [],
+            'n_patches': 0, 'n_cleared': 0, 'n_failed': 0, 'timed_out': False}
+    if nf0 == 0 and nd0 == 0:
+        info['folds_after'] = 0
+        info['degenerate_after'] = 0
+        return mesh, info
+
+    for it in range(int(max_passes)):
+        if _time.time() - t_start > time_budget:
+            info['timed_out'] = True
+            if verbose:
+                print(f"  [zoom] time budget {time_budget:.0f}s reached; "
+                      "stopping (keeping best map)")
+            break
+        signs = _robust_face_signs(S, F)
+        n_pos = int(np.sum(signs > 0))
+        n_neg = int(np.sum(signs < 0))
+        majority = 1 if n_pos >= n_neg else -1
+        bad = (signs != majority)                       # minority + degenerate
+        bad_faces = np.where(bad)[0]
+        info['pass_folds'].append(int(len(bad_faces)))
+        if verbose:
+            print(f"  [zoom] pass {it}: {len(bad_faces)} bad faces "
+                  f"(folds+degenerate); majority={majority}")
+        if len(bad_faces) == 0:
+            break
+
+        seed = np.zeros(nv, dtype=bool)
+        seed[F[bad_faces].ravel()] = True
+        patch_v = _expand_rings(seed, Adj, ring)
+        in_patch = patch_v[F].all(axis=1)
+        patch_faces = np.where(in_patch)[0]
+        comps = _face_components(patch_faces, F)
+        # process the components that actually contain a bad face
+        bad_set = set(int(x) for x in bad_faces)
+        any_progress = False
+        for pf in comps:
+            if not any(int(x) in bad_set for x in pf):
+                continue
+            if _time.time() - t_start > time_budget:
+                info['timed_out'] = True
+                break
+            info['n_patches'] += 1
+            cleared = False
+            for grow in range(int(expand_max) + 1):
+                pfg = pf if grow == 0 else _grow_patch(pf, F, Adj, nv, vfaces,
+                                                       grow)
+                ok, S = _untangle_patch(S, F, pfg, vfaces, zaxis,
+                                        plane_iter=plane_iter)
+                if ok:
+                    cleared = True
+                    break
+            if cleared:
+                info['n_cleared'] += 1
+                any_progress = True
+            else:
+                info['n_failed'] += 1
+        if not any_progress:
+            if verbose:
+                print("  [zoom] no patch cleared this pass; stopping")
+            break
+
+    _set_tp_from_sphere(mesh, S)
+    nf1, nd1 = robust_foldover_count(S, F, return_degenerate=True)
+    info['folds_after'] = nf1
+    info['degenerate_after'] = nd1
+    if verbose:
+        print(f"  local_stereographic_untangle: folds {nf0}->{nf1}, "
+              f"degenerate {nd0}->{nd1} ({info['n_cleared']}/"
+              f"{info['n_patches']} patches cleared)")
+    return mesh, info
+
+
+def _grow_patch(pf, F, Adj, nv, vfaces, rings):
+    """Grow a face patch by ``rings`` vertex rings (returns the new face set)."""
+    pv = np.zeros(nv, dtype=bool)
+    pv[F[pf].ravel()] = True
+    pv = _expand_rings(pv, Adj, rings)
+    in_patch = pv[F].all(axis=1)
+    return np.where(in_patch)[0]
+
+
+def _untangle_patch(S, F, pf, vfaces, zaxis, plane_iter=4000):
+    """Stereographically zoom one patch, untangle in the plane, map back.
+
+    Returns ``(cleared, S)`` where ``cleared`` is True iff the patch is fully
+    positively oriented afterwards (robust check) and ``S`` carries the updated
+    free-vertex sphere positions. Pinned (boundary) vertices are untouched, so
+    the rest of the map is unaffected.
+    """
+    Ffp = F[pf]
+    pv = np.unique(Ffp.ravel())
+    loc = {int(v): i for i, v in enumerate(pv)}
+    pf_set = set(int(x) for x in pf)
+    # free vertex == all its incident faces lie inside this patch
+    free_local = np.zeros(len(pv), dtype=bool)
+    for li, v in enumerate(pv):
+        if all(int(fi) in pf_set for fi in vfaces[v]):
+            free_local[li] = True
+    if not free_local.any():
+        return False, S
+
+    # crushed-region centroid (bad faces' verts) -> rotate to the +z pole
+    signs = _robust_face_signs(S, Ffp)
+    maj = 1 if int(np.sum(signs > 0)) >= int(np.sum(signs < 0)) else -1
+    bad_local_faces = np.where(signs != maj)[0]
+    bad_verts = (np.unique(Ffp[bad_local_faces].ravel())
+                 if len(bad_local_faces) else pv)
+    c = S[bad_verts].mean(axis=0)
+    cn = float(np.linalg.norm(c))
+    c = c / cn if cn > 1e-300 else zaxis
+    R = _rot_align(c, zaxis)                            # crushed centroid -> +z
+
+    Sp = S[pv] @ R.T
+    z = np.clip(Sp[:, 2], -1.0, 1.0)
+    denom = 1.0 + z                                     # project from south pole
+    if float(np.min(denom)) < 1e-6:                     # patch reaches far side
+        return False, S
+    Pp = np.column_stack([Sp[:, 0] / denom, Sp[:, 1] / denom])
+
+    # recentre on the (near-origin) crushed centroid and rescale free spread->1
+    bl = [loc[int(v)] for v in bad_verts]
+    bc = Pp[bl].mean(axis=0)
+    Pp = Pp - bc
+    rad = np.linalg.norm(Pp[free_local], axis=1)
+    scl = float(np.median(rad[rad > 1e-300])) if np.any(rad > 1e-300) else 1.0
+    scl = scl if scl > 1e-300 else 1.0
+    Pn = Pp / scl
+
+    Tloc = np.array([[loc[int(a)], loc[int(b)], loc[int(cc)]]
+                     for a, b, cc in Ffp], dtype=int)
+    Pout, nbad = _planar_hinge_untangle(Pn, Tloc, free_local, n_iter=plane_iter)
+    if nbad > 0:
+        return False, S
+
+    # map the free vertices back: rescale -> inverse stereographic -> rotate back
+    Pb = Pout * scl + bc
+    rho2 = Pb[:, 0] ** 2 + Pb[:, 1] ** 2
+    den = 1.0 + rho2
+    Sp_new = np.column_stack([2.0 * Pb[:, 0] / den, 2.0 * Pb[:, 1] / den,
+                              (1.0 - rho2) / den])
+    S_new = Sp_new @ R
+    S_new = S_new / np.maximum(np.linalg.norm(S_new, axis=1, keepdims=True),
+                               1e-300)
+    S = S.copy()
+    gidx = pv[free_local]
+    S[gidx] = S_new[free_local]
+    # Cleared iff every patch face now matches the patch (== global) majority
+    # orientation -- stricter than min(n_pos,n_neg)==0, so a patch can never be
+    # globally flipped into a new batch of folds.
+    if np.all(_robust_face_signs(S, Ffp) == maj):
+        return True, S
+    return False, S
+
+
+def guaranteed_untangle(mesh, seed_maps=None, verbose=True, **kw):
+    """Run the stereographic-zoom untangle from the *best-robust* start.
+
+    The global area equalizer (Stage 2) optimises a float64 fold count that is
+    unreliable in the crushed tentacle region, so for a hard shape (hydra) it can
+    actually *increase* the robust fold count (e.g. 4 -> 43) and spread the folds
+    out -- a far worse start for the untangler. This wrapper therefore picks the
+    fewest-robust-fold map among the current map and any guaranteed-bijective
+    snapshots (the Tutte init, the Mobius-centred map) handed in as ``seed_maps``
+    (list of ``(name, S)``), then runs :func:`local_stereographic_untangle` from
+    there. Returns ``(mesh, info)`` (``info['start_map']`` names the chosen
+    start). Operates in place on ``mesh.t`` / ``mesh.p``.
+    """
+    F = np.asarray(mesh.F, int)
+    cands = [('current', _sphere_from_tp(mesh))]
+    for nm, S in (seed_maps or []):
+        if S is not None and len(S) == len(mesh.X):
+            cands.append((nm, np.asarray(S, float)))
+    scored = []
+    for nm, S in cands:
+        nf, nd = robust_foldover_count(S, F, return_degenerate=True)
+        scored.append((nf + nd, nf, nd, nm, S))
+    scored.sort(key=lambda r: r[0])
+    best = scored[0]
+    if verbose:
+        summ = ', '.join(f"{r[3]}={r[1]}+{r[2]}d" for r in scored)
+        print(f"  guaranteed_untangle: start candidates [{summ}] "
+              f"-> '{best[3]}' ({best[1]} folds + {best[2]} degenerate)")
+    _set_tp_from_sphere(mesh, best[4])
+    mesh, info = local_stereographic_untangle(mesh, verbose=verbose, **kw)
+    info['start_map'] = best[3]
+    info['start_candidates'] = {r[3]: (r[1], r[2]) for r in scored}
     return mesh, info
 
 
@@ -1744,7 +2157,8 @@ def parameterize_to_sphere(
         cmcf_iter=120, cmcf_step=1.0, cmcf_tol=1e-5, untangle_iter=400,
         area_blend=1.0, area_exponent=2.0, area_n_iter=1200, lambda_shape=0.3,
         aniso_rounds=0, aniso_split_factor=1.7,
-        allow_cage_fallback=True, n_cage=250,
+        allow_cage_fallback=True, n_cage=250, allow_zoom_rescue=True,
+        precision_retry=True, precision_floor_verts=1500, _retry_depth=0,
         center=True, fit_shp_L_max=16, shp_oversample=40, shp_method='auto',
         snapshot_every=0, verbose=True):
     """Arbitrary genus-0 mesh -> bijective, SHP-ready unit-sphere map.
@@ -1840,6 +2254,14 @@ def parameterize_to_sphere(
             print("=" * 60)
         m = mobius_center(m, verbose=verbose)
 
+    # Snapshot the centred (pre-equalize) map: it is the best-robust,
+    # guaranteed-bijective-by-construction start for the Stage-2c zoom rescue,
+    # because the global equalizer below can *increase* the robust fold count on
+    # a crushed shape (it optimises an unreliable float64 fold count).
+    result['m_centered'] = surface_mesh(m.X.copy(), m.F.copy())
+    result['m_centered'].t = m.t.copy()
+    result['m_centered'].p = m.p.copy()
+
     # ---- Stage 2: area equalization (interior-point, fold-free) ---------- #
     if verbose:
         print("\n" + "=" * 60)
@@ -1854,15 +2276,17 @@ def parameterize_to_sphere(
     result['stage2_diag'] = diag2
     result['mesh'] = m
 
-    # ---- Stage 2c: escalation gate (only triggers when NOT bijective) ---- #
+    # ---- Stage 2c: escalation gate + guaranteed solver ------------------- #
     # The trigger is the actual residual foldover count (ground-truth failure
     # signal), so a clean map pays nothing extra (no degradation, no wasted
     # compute):
     #   0 folds            -> done.
-    #   few folds          -> Tier-1 local fold surgery (cheap, localized).
-    #   many / high-kappa  -> flag 'too_complex' (a near-degenerate shape such as
-    #                         a hydra folds at every resolution; conformal SHP
-    #                         cannot embed it, so we do NOT burn compute on it).
+    #   few, low-kappa     -> Tier-1 local fold surgery (cheap, localized).
+    #   anything remaining -> guaranteed solver: local stereographic-zoom
+    #                         untangle from the best-robust start. This defeats
+    #                         the float64 precision wall that pins a hydra's
+    #                         tentacle-tip folds, so we PRODUCE a bijective map
+    #                         (and flag that the rescue ran) rather than skip.
     from .tiered_spherical_parameterization import INTRACTABLE_KAPPA
     # Use the ROBUST (exact-fallback) foldover count for classification -- the
     # float64 count both over- and under-reports on near-degenerate faces.
@@ -1873,20 +2297,45 @@ def parameterize_to_sphere(
     surgery_max = max(50, int(0.02 * n_faces))
     near_tol = max(3, int(0.003 * n_faces))
     quality = 'bijective'
-    if nf > 0:
-        if nf <= surgery_max and kappa <= INTRACTABLE_KAPPA:
+    if nf > 0 or n_degen > 0:
+        if 0 < nf <= surgery_max and kappa <= INTRACTABLE_KAPPA:
             if verbose:
                 print("\n" + "=" * 60)
                 print(f"Stage 2c: {nf} residual folds -> Tier-1 local surgery")
                 print("=" * 60)
             m, surg = local_fold_surgery(m, verbose=verbose)
             result['surgery'] = surg
-            diag2 = sphere_diagnostics(m, verbose=verbose)
-            result['stage2_diag'] = diag2
             result['mesh'] = m
             nf, n_degen = robust_foldover_count(
                 _sphere_from_tp(m), np.asarray(m.F, int), return_degenerate=True)
-        if nf == 0:
+
+        # Guaranteed solver: stereographic-zoom untangle from the best-robust
+        # start (current map, the Mobius-centred snapshot, or the Tutte init).
+        if (nf > 0 or n_degen > 0) and allow_zoom_rescue:
+            if verbose:
+                print("\n" + "=" * 60)
+                print(f"Stage 2c: {nf} folds + {n_degen} degenerate -> "
+                      "guaranteed stereographic-zoom untangle")
+                print("=" * 60)
+            seeds = []
+            if result.get('m_centered') is not None:
+                seeds.append(('mobius', _sphere_from_tp(result['m_centered'])))
+            if result.get('m_sphere_raw') is not None:
+                seeds.append(('tutte_init',
+                              _sphere_from_tp(result['m_sphere_raw'])))
+            m, rescue = guaranteed_untangle(m, seed_maps=seeds, verbose=verbose)
+            result['rescue'] = rescue
+            result['rescued'] = True
+            result['mesh'] = m
+            nf = rescue['folds_after']
+            n_degen = rescue['degenerate_after']
+            if nf == 0 and n_degen == 0 and 'zoom' not in result['method']:
+                result['method'] = result['method'] + '+zoom'
+
+        diag2 = sphere_diagnostics(m, verbose=verbose)
+        result['stage2_diag'] = diag2
+        result['mesh'] = m
+        if nf == 0 and n_degen == 0:
             quality = 'bijective'
         elif nf <= near_tol:
             quality = 'near_bijective'
@@ -1899,9 +2348,66 @@ def parameterize_to_sphere(
     result['n_foldovers'] = nf
     result['n_degenerate'] = n_degen
 
+    # ---- Guaranteed-bijective resolution cap (precision-walled shapes) --- #
+    # At high resolution a hydra-class shape crosses the float64 *representation*
+    # ceiling: hundreds of tentacle-tip faces collapse to coincident float64
+    # points, which NO untangler (zoom or otherwise) can separate -- the limit is
+    # representation, not computation. Rather than ship a folded map, re-derive
+    # at a coarser resolution where a bijective float64 embedding provably exists
+    # (the zoom untangle reaches true 0 there, validated at ~2k). This keeps the
+    # 'never fails' guarantee: a flagged shape is still PRODUCED bijective, at its
+    # achievable resolution (and flagged via 'precision_capped'). The trigger is
+    # the presence of exactly-DEGENERATE (collapsed) faces -- the unambiguous
+    # signature of the representation ceiling. Kernel-empty single folds (e.g.
+    # 1dpx: inverted but not degenerate, n_degen == 0) are a *different* problem
+    # that coarsening won't fix, so they are correctly left flagged, not retried.
+    if (quality != 'bijective' and precision_retry and allow_zoom_rescue
+            and _retry_depth < 4 and n_degen > 0
+            and int(round(target_verts * 0.5)) < target_verts
+            and target_verts > precision_floor_verts):
+        coarser = max(int(precision_floor_verts), int(round(target_verts * 0.5)))
+        if verbose:
+            print("\n" + "#" * 60)
+            print(f"Resolution cap: float64 representation ceiling at "
+                  f"{len(m.X)} verts ({nf} folds + {n_degen} degenerate, "
+                  f"kappa={kappa:.2f}); re-deriving @ target_verts={coarser}")
+            print("#" * 60)
+        retry = parameterize_to_sphere(
+            mesh, target_verts=coarser, curvature_strength=curvature_strength,
+            do_preprocess=do_preprocess, cmcf_iter=cmcf_iter,
+            cmcf_step=cmcf_step, cmcf_tol=cmcf_tol, untangle_iter=untangle_iter,
+            area_blend=area_blend, area_exponent=area_exponent,
+            area_n_iter=area_n_iter, lambda_shape=lambda_shape,
+            aniso_rounds=aniso_rounds, aniso_split_factor=aniso_split_factor,
+            allow_cage_fallback=allow_cage_fallback, n_cage=n_cage,
+            allow_zoom_rescue=allow_zoom_rescue, precision_retry=precision_retry,
+            precision_floor_verts=precision_floor_verts,
+            _retry_depth=_retry_depth + 1, center=center,
+            fit_shp_L_max=fit_shp_L_max, shp_oversample=shp_oversample,
+            shp_method=shp_method, snapshot_every=snapshot_every,
+            verbose=verbose)
+        # Adopt the coarser map if it is bijective or simply less folded.
+        if (retry.get('quality') == 'bijective'
+                or retry.get('n_foldovers', 1 << 30) < nf):
+            retry['precision_capped'] = True
+            retry['precision_cap_from_verts'] = int(len(m.X))
+            retry['precision_cap_target_verts'] = coarser
+            retry.setdefault('history', []).append(
+                f"precision cap: {len(m.X)}v ({nf}f+{n_degen}d) "
+                f"-> retry@{coarser}")
+            if verbose:
+                print(f"  resolution cap adopted: quality="
+                      f"{retry.get('quality')} folds={retry.get('n_foldovers')} "
+                      f"@ {len(retry['mesh'].X)} verts")
+            return retry
+
     # ---- Stage 2b: stretch-aligned anisotropic refinement (look-ahead) --- #
-    # Only on a bijective map (refining a folded map amplifies it).
-    if aniso_rounds > 0 and quality == 'bijective':
+    # Only on a bijective map (refining a folded map amplifies it), and NOT on a
+    # rescued (zoom-untangled) map: refinement re-runs the float64 equalizer,
+    # which would re-fold the crushed region the rescue just cleared, and adding
+    # vertices there only worsens the precision wall (higher resolution makes a
+    # hydra strictly worse). Rescued shapes keep their guaranteed bijective map.
+    if aniso_rounds > 0 and quality == 'bijective' and not result.get('rescued'):
         if verbose:
             print("\n" + "=" * 60)
             print(f"Stage 2b: anisotropic refinement ({aniso_rounds} rounds, "
@@ -1912,9 +2418,29 @@ def parameterize_to_sphere(
             area_blend=area_blend, area_exponent=area_exponent,
             area_n_iter=area_n_iter, lambda_shape=lambda_shape, verbose=verbose)
         result['aniso_history'] = aniso_hist
+        result['mesh'] = m
+
+        # Defensive final re-verification: the warm re-equalize inside aniso uses
+        # the float64 fold count, so re-confirm bijectivity with the robust
+        # predicate and zoom-untangle once more if it regressed (never ship a
+        # 'bijective' label over a map that secretly re-folded).
+        nf, n_degen = robust_foldover_count(
+            _sphere_from_tp(m), np.asarray(m.F, int), return_degenerate=True)
+        if (nf > 0 or n_degen > 0) and allow_zoom_rescue:
+            if verbose:
+                print(f"  post-aniso re-verify: {nf} folds + {n_degen} "
+                      "degenerate -> zoom untangle")
+            m, rescue2 = guaranteed_untangle(m, seed_maps=None, verbose=verbose)
+            result['rescue_post_aniso'] = rescue2
+            result['mesh'] = m
+            nf, n_degen = rescue2['folds_after'], rescue2['degenerate_after']
+            result['n_foldovers'] = nf
+            result['n_degenerate'] = n_degen
+            result['quality'] = ('bijective' if nf == 0 and n_degen == 0
+                                 else ('near_bijective' if nf <= near_tol
+                                       else 'too_complex'))
         diag2 = sphere_diagnostics(m, verbose=verbose)
         result['stage2_diag'] = diag2
-        result['mesh'] = m
 
     # ---- Stage 3: SHP fit (upsampled to match L_max) --------------------- #
     if fit_shp_L_max:
