@@ -49,6 +49,10 @@ Public API
                              intermediate meshes are kept for visualization.
     cmcf_sphere_map          Stage 1 only (sets mesh.t / mesh.p).
     redistribute_area        Stage 2 only (equal-area <-> curvature blend).
+    multiresolution_sphere_map  coarse-to-fine equal-area map (fixes the
+                             protrusion truncation the local equalizer stalls on).
+    export_off               write .off with consistent outward winding (clean
+                             MeshLab normals).
     fps_cage_sphere_map      coarse-to-fine fallback.
     geodesic_farthest_point_sampling  blue-noise samples (geodesic distance).
     sphere_foldover_count / sphere_diagnostics  cheap quality probes.
@@ -90,6 +94,34 @@ def ensure_outward_winding(X, F):
                          faces=np.asarray(F, dtype=int), process=False)
     trimesh.repair.fix_normals(tm)  # consistent winding, outward for watertight
     return np.asarray(tm.faces, dtype=int)
+
+
+def export_off(path, X, F, make_outward=True):
+    """Write a triangle mesh to ``.off`` with clean, consistent OUTWARD normals.
+
+    The bare ``writeoff`` (meshio) dumps faces verbatim, so any mesh whose
+    triangle winding is inconsistent or globally inside-out shows up with
+    "flipped" triangles / wrong normals in MeshLab. This is exactly what happens
+    to the SH **reconstruction** meshes: they are sampled on a fixed icosphere
+    face list (``sphere_mesh_gen``) and mapped through the SH coefficients, so the
+    winding is not guaranteed outward; and the **parametric-sphere** export needs
+    a consistent orientation too. We therefore repair the winding to globally
+    consistent + outward-pointing (``trimesh.repair.fix_normals``, which orients
+    by the signed volume for a watertight genus-0 surface) before writing, so the
+    saved file is high quality (every face normal points outward). Falls back to a
+    verbatim write if the repair fails (e.g. a self-intersecting recon), so an
+    export never aborts a batch. Returns ``path``.
+    """
+    from ..utils import writeoff
+    X = np.asarray(X, dtype=float)
+    F = np.asarray(F, dtype=int)
+    if make_outward and len(F):
+        try:
+            F = ensure_outward_winding(X, F)
+        except Exception:                                   # noqa: BLE001
+            pass                                            # write verbatim
+    writeoff(path, X, F)
+    return path
 
 
 # --------------------------------------------------------------------------- #
@@ -1667,6 +1699,147 @@ def fps_cage_sphere_map(mesh, n_cage=250, cage_curv_weight=1.0,
 
 
 # --------------------------------------------------------------------------- #
+# Multiresolution (coarse-to-fine) equal-area map
+# --------------------------------------------------------------------------- #
+# The interior-point area equalizer is a capped-step, fold-prevented LOCAL
+# optimizer. On a blobby shape it reaches a near-perfect equal-area map (area
+# cov ~0.13). But on a shape with a thin protrusion (zebrafish tail, hydra
+# tentacle) the conformal cMCF start crushes the protrusion to a sub-pixel cap,
+# and inflating it back needs a large *coordinated, global* redistribution that
+# the local optimizer cannot make from that start -- it accepts a handful of
+# steps and stalls, leaving the protrusion crushed (cov ~0.6, a cluster of
+# ~1e11x-too-small faces) -> SHP truncates the protrusion.
+#
+# The crushing is NOT fundamental, though: at coarse resolution the SAME
+# equalizer spreads the protrusion perfectly (zebrafish @600 verts -> cov 0.06,
+# 0% tiny). And once a level is equal-area, REFINING it and re-equalizing from
+# that warm start STAYS equal-area (validated: cov 0.05 at 2.4k, 9.6k, 38k).
+# So we build the map coarse-to-fine: equalize a coarse cage (which is a vertex
+# SUBSET of the fine mesh, so geometry is preserved -- the fine mesh keeps its
+# original vertices), transfer that well-spread map onto the fine geometry, and
+# re-equalize from the warm start. This gives protrusion shapes a genuinely
+# equal-area parameterization without smoothing away their 3-D detail.
+def _transfer_map_3d(Xf, Xc, Fc, Sc, k=8):
+    """Transfer a coarse sphere map ``Sc`` (on coarse mesh ``Xc``/``Fc``) onto the
+    fine vertices ``Xf``: for each fine vertex pick the best-containing coarse
+    triangle (nearest centroids -> max-min barycentric), interpolate ``Sc``
+    barycentrically, and renormalise to the sphere. Vectorised."""
+    Xf = np.asarray(Xf, float)
+    Xc = np.asarray(Xc, float)
+    Fc = np.asarray(Fc, int)
+    Sc = np.asarray(Sc, float)
+    cen = Xc[Fc].mean(axis=1)
+    k = int(min(k, len(Fc)))
+    _, cand = cKDTree(cen).query(Xf, k=k)
+    if cand.ndim == 1:
+        cand = cand[:, None]
+    a, b, c = Xc[Fc[:, 0]], Xc[Fc[:, 1]], Xc[Fc[:, 2]]
+    e1, e2 = b - a, c - a
+    A00 = np.einsum('ij,ij->i', e1, e1)
+    A01 = np.einsum('ij,ij->i', e1, e2)
+    A11 = np.einsum('ij,ij->i', e2, e2)
+    det = A00 * A11 - A01 * A01
+    det = np.where(np.abs(det) < 1e-20, 1e-20, det)
+    d = Xf[:, None, :] - a[cand]                        # (Nf,k,3)
+    b0 = np.einsum('nkj,nkj->nk', d, e1[cand])
+    b1 = np.einsum('nkj,nkj->nk', d, e2[cand])
+    u = (A11[cand] * b0 - A01[cand] * b1) / det[cand]
+    v = (A00[cand] * b1 - A01[cand] * b0) / det[cand]
+    bary = np.stack([1.0 - u - v, u, v], axis=-1)       # (Nf,k,3)
+    best = np.argmax(bary.min(axis=2), axis=1)
+    rows = np.arange(len(Xf))
+    fsel = cand[rows, best]
+    bsel = np.clip(bary[rows, best], 0.0, None)
+    bsel = bsel / np.maximum(bsel.sum(axis=1, keepdims=True), 1e-15)
+    S = np.einsum('ni,nij->nj', bsel, Sc[Fc[fsel]])
+    return S / np.maximum(np.linalg.norm(S, axis=1, keepdims=True), 1e-15)
+
+
+def _follow_smooth(S, F, fixed_mask, n_iter=150):
+    """Fast flip-prevented tangential relaxation (vectorised neighbour averaging)
+    with ``fixed_mask`` vertices pinned -- spreads free vertices toward the
+    pinned (well-distributed) anchors while keeping the map on the sphere."""
+    S = S / np.maximum(np.linalg.norm(S, axis=1, keepdims=True), 1e-15)
+    W = _avg_matrix(np.asarray(F, int), len(S))
+    for _ in range(int(n_iter)):
+        Sn = W @ S
+        Sn[fixed_mask] = S[fixed_mask]
+        S = Sn / np.maximum(np.linalg.norm(Sn, axis=1, keepdims=True), 1e-15)
+    return S
+
+
+def multiresolution_sphere_map(mesh, coarse_verts=700, area_blend=1.0,
+                               area_exponent=2.0, lambda_shape=0.0,
+                               coarse_area_n_iter=2500, fine_area_n_iter=1500,
+                               follow_iter=0, verbose=True):
+    """Coarse-to-fine **equal-area** spherical map (geometry-preserving).
+
+    1. Build a coarse cage that is a vertex SUBSET of the fine mesh (geodesic
+       farthest-point samples protected through curvature-aware decimation), so
+       the fine 3-D geometry is untouched.
+    2. Map the cage to the sphere (cMCF -> Mobius) and **equalize its areas** --
+       at coarse resolution the protrusion spreads to a genuinely equal-area
+       layout the fine-resolution optimizer can't reach on its own.
+    3. Transfer that well-spread map onto the fine vertices (barycentric) and pin
+       the cage vertices to their equalized positions. (``follow_iter`` Laplacian
+       relaxation is OFF by default: it pushes toward uniform vertex *spacing*,
+       which fights equal *area* on a curvature-remeshed mesh.)
+    4. Re-equalize the fine map from that warm start (it stays equal-area).
+
+    Sets ``mesh.t`` / ``mesh.p``; returns ``(mesh, info)``.
+    """
+    mesh.F = ensure_outward_winding(mesh.X, mesh.F)
+    X = np.asarray(mesh.X, float)
+    F = np.asarray(mesh.F, int)
+    nv = len(X)
+    eqkw = dict(area_blend=area_blend, area_exponent=area_exponent,
+                lambda_shape=lambda_shape)
+
+    # ---- coarse cage (a subset of the fine vertices) --------------------- #
+    cv = int(min(coarse_verts, max(64, nv // 3)))
+    fps = geodesic_farthest_point_sampling(mesh, cv, verbose=False)
+    cage, vmap = mesh.curvature_aware_decimation(
+        target_faces=int(2 * cv), curvature_weight=1.0,
+        protected_vertices=fps, verbose=False)
+    cage.F = ensure_outward_winding(cage.X, cage.F)
+    cage.props()
+    vmap = np.asarray(vmap, int)
+
+    # ---- equal-area coarse map ------------------------------------------- #
+    cage, _ = cmcf_sphere_map(cage, verbose=False)
+    cage = mobius_center(cage, verbose=False)
+    cage, _ = equalize_areas(cage, n_iter=coarse_area_n_iter, verbose=False,
+                             **eqkw)
+    Sc = _sphere_from_tp(cage)
+    cage_cov = float(np.std(_sphere_tri_areas(Sc, np.asarray(cage.F, int)))
+                     / max(np.mean(_sphere_tri_areas(
+                         Sc, np.asarray(cage.F, int))), 1e-20))
+
+    # ---- transfer to fine geometry + pin cage + follow ------------------- #
+    S = _transfer_map_3d(X, cage.X, np.asarray(cage.F, int), Sc)
+    fixed = np.zeros(nv, dtype=bool)
+    fixed[vmap] = True
+    S[vmap] = Sc                                        # exact cage anchors
+    S = _follow_smooth(S, F, fixed, n_iter=follow_iter)
+    _set_tp_from_sphere(mesh, S)
+
+    # ---- re-equalize the fine map (warm start) --------------------------- #
+    mesh = mobius_center(mesh, verbose=False)
+    mesh, eqf = equalize_areas(mesh, n_iter=fine_area_n_iter, verbose=False,
+                               **eqkw)
+    nf, nd = robust_foldover_count(_sphere_from_tp(mesh), F,
+                                   return_degenerate=True)
+    info = {'coarse_verts': int(len(cage.X)), 'coarse_area_cov': cage_cov,
+            'fine_area_cov': eqf['area_cov_after'], 'foldovers': nf,
+            'degenerate': nd}
+    if verbose:
+        print(f"  multiresolution_sphere_map: cage {len(cage.X)}v "
+              f"(cov {cage_cov:.2f}) -> fine {nv}v "
+              f"(cov {eqf['area_cov_after']:.2f}, folds {nf}+{nd}d)")
+    return mesh, info
+
+
+# --------------------------------------------------------------------------- #
 # Diagnostics
 # --------------------------------------------------------------------------- #
 def sphere_diagnostics(mesh, area_tol=0.05, verbose=True):
@@ -2159,6 +2332,7 @@ def parameterize_to_sphere(
         aniso_rounds=0, aniso_split_factor=1.7,
         allow_cage_fallback=True, n_cage=250, allow_zoom_rescue=True,
         precision_retry=True, precision_floor_verts=1500, _retry_depth=0,
+        allow_multires=True, multires_cov_trigger=0.35,
         center=True, fit_shp_L_max=16, shp_oversample=40, shp_method='auto',
         snapshot_every=0, verbose=True):
     """Arbitrary genus-0 mesh -> bijective, SHP-ready unit-sphere map.
@@ -2276,6 +2450,54 @@ def parameterize_to_sphere(
     result['stage2_diag'] = diag2
     result['mesh'] = m
 
+    # ---- Stage 2m: multiresolution rescue for a crushed parameterization - #
+    # The direct (local) equalizer reaches a near-perfect equal-area map on a
+    # blobby shape, but STALLS on a thin protrusion -- it crushes into a
+    # sub-pixel cap (high area cov) the SHP then truncates. Only when that
+    # happens do we also build the coarse-to-fine equal-area map (which spreads
+    # the protrusion) and keep whichever is better by (robust folds, area cov).
+    # Blobby shapes (cov already small) skip this -> no regression, no extra
+    # compute; a hopelessly float64-walled shape (hydra, cov >> 1) is rejected by
+    # keep-best, so it costs at most one extra coarse-to-fine attempt.
+    if (allow_multires and diag2['area_cov'] > multires_cov_trigger
+            and diag2['area_cov'] < 2.5):
+        if verbose:
+            print("\n" + "=" * 60)
+            print(f"Stage 2m: area cov {diag2['area_cov']:.2f} (crushed) -> "
+                  "coarse-to-fine equal-area attempt")
+            print("=" * 60)
+        nf_d, nd_d = robust_foldover_count(_sphere_from_tp(m),
+                                           np.asarray(m.F, int),
+                                           return_degenerate=True)
+        try:
+            m_mr = surface_mesh(result['m_pre'].X.copy(),
+                                result['m_pre'].F.copy())
+            m_mr.props()
+            m_mr, mr_info = multiresolution_sphere_map(
+                m_mr, area_blend=area_blend, area_exponent=area_exponent,
+                lambda_shape=lambda_shape, verbose=verbose)
+            diag_mr = sphere_diagnostics(m_mr, verbose=verbose)
+            result['multires_info'] = mr_info
+            # keep-best: fewer (folds + degenerate), then lower area cov
+            key_cur = (nf_d + nd_d, diag2['area_cov'])
+            key_mr = (mr_info['foldovers'] + mr_info['degenerate'],
+                      diag_mr['area_cov'])
+            if key_mr < key_cur:
+                m = m_mr
+                diag2 = diag_mr
+                result['stage2_diag'] = diag2
+                result['mesh'] = m
+                if 'multires' not in result['method']:
+                    result['method'] = result['method'] + '+multires'
+                if verbose:
+                    print(f"  -> using multiresolution map (cov "
+                          f"{diag_mr['area_cov']:.2f} < {key_cur[1]:.2f})")
+            elif verbose:
+                print(f"  -> keeping direct map (cov {key_cur[1]:.2f} better)")
+        except Exception as exc:                            # noqa: BLE001
+            if verbose:
+                print(f"  multiresolution attempt failed ({exc}); keeping direct")
+
     # ---- Stage 2c: escalation gate + guaranteed solver ------------------- #
     # The trigger is the actual residual foldover count (ground-truth failure
     # signal), so a clean map pays nothing extra (no degradation, no wasted
@@ -2382,7 +2604,8 @@ def parameterize_to_sphere(
             allow_cage_fallback=allow_cage_fallback, n_cage=n_cage,
             allow_zoom_rescue=allow_zoom_rescue, precision_retry=precision_retry,
             precision_floor_verts=precision_floor_verts,
-            _retry_depth=_retry_depth + 1, center=center,
+            _retry_depth=_retry_depth + 1, allow_multires=allow_multires,
+            multires_cov_trigger=multires_cov_trigger, center=center,
             fit_shp_L_max=fit_shp_L_max, shp_oversample=shp_oversample,
             shp_method=shp_method, snapshot_every=snapshot_every,
             verbose=verbose)

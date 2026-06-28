@@ -35,9 +35,12 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
 - `11d00d0` analyze_shp (LS<=24 / grid>24) -> L_max=60 everywhere + Tutte Stage-1b fallback
 - `59faf32` batch TARGET_VERTS=7000 + CLI smoke test (run_parameterization_test.py)
 - `b46d6e9` robust_foldover_count (exact fallback) + honest Stage-2c classification
-- (pending) **guaranteed solver: local stereographic-zoom untangle** + Stage-2c
+- `a24050c` **guaranteed solver: local stereographic-zoom untangle** + Stage-2c
   wiring + guaranteed-bijective resolution cap -> hydra reaches **true robust 0**
-  (was too_complex); clean shapes untouched  <-- HEAD
+  (was too_complex); clean shapes untouched
+- (pending) **multiresolution (coarse-to-fine) equal-area map** (fixes protrusion
+  truncation: zebrafish recon RMS 6.5% -> 0.18% @L=60) + `export_off` (outward
+  winding for clean MeshLab normals) + batch `_f_param_sphere.off` export  <-- HEAD
 - Git identity is NOT configured; commit with one-off:
   `git -c user.email="khaledkhairy@yahoo.com" -c user.name="Khaled Khairy" commit ...`
 - NOTE: the other files shown modified in `git status` (tiered_spherical_parameterization.py,
@@ -58,6 +61,14 @@ shape library. Near-term focus: **proteins** (highly convoluted -> need high
    starts** (accepts steps that don't increase folds); keep-best by (folds, cov);
    `lambda_shape` shape regularizer; `free_mask` for local surgery; `area_blend`
    1.0=uniform (best for SHP) .. 0.0=curvature.
+2m. **multiresolution rescue** (`multiresolution_sphere_map`) — fires only when the
+   direct equalize leaves the map crushed (`area_cov > 0.35` & `< 2.5`, i.e. a thin
+   protrusion the LOCAL equalizer stalled on). Builds an equal-area map coarse-to-
+   fine (equalize a coarse vertex-SUBSET cage where the protrusion spreads, transfer
+   onto the fine geometry, re-equalize) and **keep-best by (robust folds, cov)** vs
+   the direct map. Blobby shapes skip it (no regression); hydra (cov>2.5) is excluded
+   (float64-walled on area). Fixes protrusion truncation (zebrafish cov 1.5->0.45,
+   recon RMS 6.5%->0.18% @L=60); method tag `+multires`.
 2c. **escalation gate + guaranteed solver** — trigger = residual robust folds:
     0 -> `bijective`; few & kappa<=6 -> `local_fold_surgery` (cheap); anything
     remaining -> **`guaranteed_untangle`** = local stereographic-zoom untangle
@@ -224,6 +235,42 @@ Result flagged `precision_capped`. Hydra@7k -> capped to ~3.5k bijective.
   cap -> **bijective** @3501 verts, 0.11% RMS @L=60, `precision_capped`.
 - 8 clean shapes UNCHANGED (cmcf, bijective); 1dpx near_bijective (3 folds,
   kernel-empty, attempted-but-not-capped); no regressions.
+
+## DONE (this session): equal-area fidelity (multiresolution map) + clean OFF export
+Investigated visual recon truncation of lobes/tentacles. KEY DIAGNOSIS (measured):
+the LOCAL log-barrier equalizer reaches near-perfect equal-area on blobby shapes
+(cov ~0.13) but STALLS on a thin protrusion -- from the conformal cMCF start it
+accepts a handful of steps then can't inflate the crushed protrusion (zebrafish:
+9 steps then stuck, cov 1.54, 31% of faces ~1e11x too small -> SHP truncates the
+tail). It is a LOCAL-MINIMUM, not phantom folds (start has 0 float64 & 0 robust
+folds) and not a regression from the zoom work (zebrafish is on the unchanged
+bijective-cMCF path; cov is stable across res/aniso). Crucially the SAME equalizer
+spreads the protrusion perfectly at COARSE res (zebrafish @600v -> cov 0.06), and a
+warm start STAYS equal-area through refinement.
+- `multiresolution_sphere_map` -- coarse-to-fine equal-area: equalize a coarse cage
+  (a vertex SUBSET via protected-FPS curvature decimation, so fine geometry is kept),
+  `_transfer_map_3d` it onto the fine vertices (barycentric, cage pinned exactly),
+  re-equalize. NOTE: the Laplacian "follow" is OFF by default -- it pushes toward
+  uniform vertex SPACING, which fights equal AREA on a curvature-remeshed mesh.
+- Wired as **Stage 2m** keep-best (see pipeline stages). Validated end-to-end:
+  zebrafish `cmcf+multires` bijective, recon RMS **6.5% -> 0.18%** @L=60 (0.83% @L=16),
+  cov 1.5->0.45; aniso preserves it. mushroom/echinocyte/brain/mushroom_repaired x3
+  UNCHANGED (skip multires); hydra/1dpx unchanged. No regressions.
+- `export_off(path, X, F)` (in cmcf module) -- writes `.off` with consistent OUTWARD
+  winding (`trimesh.repair.fix_normals`), fixing the "flipped triangles" MeshLab
+  showed on SH-recon meshes (sampled on a raw icosphere face list -> winding not
+  outward). Batch notebook now exports `<name>_f_param_sphere.off` (the parametric
+  sphere, same connectivity, for inspecting area/shear evenness in MeshLab) and uses
+  `export_off` for every `.off`. (GOTCHA: that notebook is CRLF + lives in Dropbox +
+  stays open in the IDE; editing it as raw text races the IDE/Dropbox writer and
+  truncated it once -- prefer the notebook tooling or paste the snippet by hand.)
+
+## STILL OPEN: hydra equal-area (orbifold-Tutte)
+Multires does NOT help hydra (cov stays ~3.6, excluded by the cov<2.5 trigger): its
+tentacle is float64-area-walled even at coarse res. Hydra is bijective (zoom+cap) and
+its grid-quadrature SHP is fine (0.11-0.13% @L=60), but its *area* map is still
+crushed. The real fix is **orbifold-Tutte** (constructive cone-point area) or
+extended precision -- the remaining big-ticket item for the most extreme shapes.
 
 ## NEXT (optional, lower priority)
 - **1dpx kernel-empty single folds**: need an **edge-flip** surgery (the zoom
